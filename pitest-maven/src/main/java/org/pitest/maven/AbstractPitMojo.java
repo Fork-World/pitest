@@ -2,9 +2,11 @@ package org.pitest.maven;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.logging.Logger;
 
 import org.apache.maven.artifact.Artifact;
@@ -14,8 +16,10 @@ import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 import org.pitest.coverage.CoverageSummary;
-import org.pitest.functional.Option;
-import org.pitest.functional.predicate.Predicate;
+import java.util.Optional;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+
 import org.pitest.mutationtest.config.PluginServices;
 import org.pitest.mutationtest.config.ReportOptions;
 import org.pitest.mutationtest.statistics.MutationStatistics;
@@ -30,23 +34,29 @@ public class AbstractPitMojo extends AbstractMojo {
 
   private final Predicate<MavenProject> notEmptyProject;
   
-  protected final Predicate<Artifact> filter;
+  private final Predicate<Artifact>   filter;
 
-  protected final PluginServices      plugins;
+  private final PluginServices        plugins;
 
   // Concrete List types declared for all fields to work around maven 2 bug
+  
+  /**
+   * Test plugin to use
+   */
+  @Parameter(property = "testPlugin", defaultValue = "")
+  private String testPlugin;
 
   /**
    * Classes to include in mutation test
    */
   @Parameter(property = "targetClasses")
-  protected ArrayList<String>         targetClasses;
+  private ArrayList<String>           targetClasses;
 
   /**
    * Tests to run
    */
   @Parameter(property = "targetTests")
-  protected ArrayList<String>         targetTests;
+  private ArrayList<String>           targetTests;
 
   /**
    * Methods not to mutate
@@ -55,10 +65,17 @@ public class AbstractPitMojo extends AbstractMojo {
   private ArrayList<String>           excludedMethods;
 
   /**
-   * Classes not to mutate or run tests from
+   * Classes not to mutate
    */
   @Parameter(property = "excludedClasses")
   private ArrayList<String>           excludedClasses;
+  
+  /**
+   * Classes not to run tests from
+   */
+  @Parameter(property = "excludedTestClasses")
+  private ArrayList<String>           excludedTestClasses;
+
 
   /**
    * Globs to be matched against method calls. No mutations will be created on
@@ -128,6 +145,13 @@ public class AbstractPitMojo extends AbstractMojo {
    */
   @Parameter(property = "mutators")
   private ArrayList<String>           mutators;
+  
+  /**
+   * Mutation operators to apply
+   */
+  @Parameter(property = "features")
+  private ArrayList<String>           features;
+
 
   /**
    * Weighting to allow for timeouts
@@ -190,9 +214,24 @@ public class AbstractPitMojo extends AbstractMojo {
   private ArrayList<String>           includedGroups;
 
   /**
+   * Test methods that should be included for challenging the mutants
+   */
+  @Parameter(property = "includedTestMethods")
+  private ArrayList<String>           includedTestMethods;
+
+  /**
+   * Whether to create a full mutation matrix.
+   * 
+   * If set to true all tests covering a mutation will be executed,
+   * if set to false the test execution will stop after the first killing test.
+   */
+  @Parameter(property = "fullMutationMatrix", defaultValue = "false")
+
+  private boolean                     fullMutationMatrix;
+  /**
    * Maximum number of mutations to include in a single analysis unit.
    * 
-   * If set to 1 will analyse very slowly, but with string (jvm per mutant)
+   * If set to 1 will analyse very slowly, but with strong (jvm per mutant)
    * isolation.
    *
    */
@@ -278,6 +317,14 @@ public class AbstractPitMojo extends AbstractMojo {
   private boolean                     skipTests;
 
   /**
+   * When set will ignore failing tests when computing coverage. Otherwise, the
+   * run will fail. If parseSurefireConfig is true, will be overridden from
+   * surefire configuration property testFailureIgnore
+   */
+  @Parameter(defaultValue = "false")
+  private boolean                     skipFailingTests;
+
+  /**
    * Use slf4j for logging
    */
   @Parameter(defaultValue = "false", property = "useSlf4j")
@@ -298,22 +345,31 @@ public class AbstractPitMojo extends AbstractMojo {
    * Value pairs may be used by pitest plugins.
    */
   @Parameter
-  private Map<String, String>         environmentVariables = new HashMap<String, String>();
+  private Map<String, String>         environmentVariables = new HashMap<>();
 
   /**
    * <i>Internal</i>: Project to interact with.
    *
    */
   @Parameter(property = "project", readonly = true, required = true)
-  protected MavenProject              project;
+  private MavenProject                project;
 
   /**
    * <i>Internal</i>: Map of plugin artifacts.
    */
   @Parameter(property = "plugin.artifactMap", readonly = true, required = true)
   private Map<String, Artifact>       pluginArtifactMap;
+  
+  
+  /**
+   * Communicate the classpath using a temporary jar with a classpath
+   * manifest. This allows support of very large classpaths but may cause
+   * issues with certian libraries.
+   */
+  @Parameter(property = "useClasspathJar", defaultValue = "false")
+  private boolean                     useClasspathJar;
 
-  protected final GoalStrategy        goalStrategy;
+  private final GoalStrategy          goalStrategy;
 
   public AbstractPitMojo() {
     this(new RunPitStrategy(), new DependencyFilter(new PluginServices(
@@ -334,9 +390,9 @@ public class AbstractPitMojo extends AbstractMojo {
       MojoFailureException {
 
     switchLogging();
+    RunDecision shouldRun = shouldRun();
 
-    if (shouldRun()) {
-
+    if (shouldRun.shouldRun()) {
       for (final ToolClasspathPlugin each : this.plugins
           .findToolClasspathPlugins()) {
         this.getLog().info("Found plugin : " + each.description());
@@ -348,15 +404,18 @@ public class AbstractPitMojo extends AbstractMojo {
             "Found shared classpath plugin : " + each.description());
       }
 
-      final Option<CombinedStatistics> result = analyse();
-      if (result.hasSome()) {
-        throwErrorIfScoreBelowThreshold(result.value().getMutationStatistics());
-        throwErrorIfMoreThanMaximumSurvivors(result.value().getMutationStatistics());
-        throwErrorIfCoverageBelowThreshold(result.value().getCoverageSummary());
+      final Optional<CombinedStatistics> result = analyse();
+      if (result.isPresent()) {
+        throwErrorIfScoreBelowThreshold(result.get().getMutationStatistics());
+        throwErrorIfMoreThanMaximumSurvivors(result.get().getMutationStatistics());
+        throwErrorIfCoverageBelowThreshold(result.get().getCoverageSummary());
       }
 
     } else {
-      this.getLog().info("Skipping project");
+      this.getLog().info("Skipping project because:");
+      for (String reason : shouldRun.getReasons()) {
+        this.getLog().info("  - " + reason);
+      }
     }
   }
 
@@ -401,10 +460,10 @@ public class AbstractPitMojo extends AbstractMojo {
     }
   }
 
-  protected Option<CombinedStatistics> analyse() throws MojoExecutionException {
+  protected Optional<CombinedStatistics> analyse() throws MojoExecutionException {
     final ReportOptions data = new MojoToReportOptionsConverter(this,
         new SurefireConfigConverter(), this.filter).convert();
-    return Option.some(this.goalStrategy.execute(detectBaseDir(), data,
+    return Optional.ofNullable(this.goalStrategy.execute(detectBaseDir(), data,
         this.plugins, this.environmentVariables));
   }
 
@@ -418,24 +477,44 @@ public class AbstractPitMojo extends AbstractMojo {
     return executionProject.getBasedir();
   }
 
+  protected Predicate<Artifact> getFilter() {
+    return filter;
+  }
+
+  protected GoalStrategy getGoalStrategy() {
+    return goalStrategy;
+  }
+
+  protected PluginServices getPlugins() {
+    return plugins;
+  }
+
   public List<String> getTargetClasses() {
-    return this.targetClasses;
+    return withoutNulls(this.targetClasses);
+  }
+
+  public void setTargetClasses(ArrayList<String> targetClasses) {
+    this.targetClasses = targetClasses;
   }
 
   public List<String> getTargetTests() {
-    return this.targetTests;
+    return withoutNulls(this.targetTests);
+  }
+
+  public void setTargetTests(ArrayList<String> targetTests) {
+    this.targetTests = targetTests;
   }
 
   public List<String> getExcludedMethods() {
-    return this.excludedMethods;
+    return withoutNulls(this.excludedMethods);
   }
 
   public List<String> getExcludedClasses() {
-    return this.excludedClasses;
+    return withoutNulls(this.excludedClasses);
   }
 
   public List<String> getAvoidCallsTo() {
-    return this.avoidCallsTo;
+    return withoutNulls(this.avoidCallsTo);
   }
 
   public File getReportsDirectory() {
@@ -455,7 +534,7 @@ public class AbstractPitMojo extends AbstractMojo {
   }
 
   public List<String> getMutators() {
-    return this.mutators;
+    return withoutNulls(this.mutators);
   }
 
   public float getTimeoutFactor() {
@@ -466,16 +545,20 @@ public class AbstractPitMojo extends AbstractMojo {
     return this.timeoutConstant;
   }
 
+  public ArrayList<String> getExcludedTestClasses() {
+    return withoutNulls(excludedTestClasses);
+  }
+
   public int getMaxMutationsPerClass() {
     return this.maxMutationsPerClass;
   }
 
   public List<String> getJvmArgs() {
-    return this.jvmArgs;
+    return withoutNulls(this.jvmArgs);
   }
 
   public List<String> getOutputFormats() {
-    return this.outputFormats;
+    return withoutNulls(this.outputFormats);
   }
 
   public boolean isVerbose() {
@@ -495,12 +578,24 @@ public class AbstractPitMojo extends AbstractMojo {
   }
 
   public List<String> getExcludedGroups() {
-    return this.excludedGroups;
+    return withoutNulls(this.excludedGroups);
   }
 
   public List<String> getIncludedGroups() {
-    return this.includedGroups;
+    return withoutNulls(this.includedGroups);
   }
+
+  public List<String> getIncludedTestMethods() {
+    return withoutNulls(this.includedTestMethods);
+  }
+
+  public boolean isFullMutationMatrix() {
+    return fullMutationMatrix;
+  }
+  
+  public void setFullMutationMatrix(boolean fullMutationMatrix) {
+    this.fullMutationMatrix = fullMutationMatrix;
+}
 
   public int getMutationUnitSize() {
     return this.mutationUnitSize;
@@ -530,11 +625,26 @@ public class AbstractPitMojo extends AbstractMojo {
     return this.exportLineCoverage;
   }
 
-  protected boolean shouldRun() {
-    return !this.skip 
-        && !this.skipTests
-        && !this.project.getPackaging().equalsIgnoreCase("pom")
-        && notEmptyProject.apply(project);
+  protected RunDecision shouldRun() {
+    RunDecision decision = new RunDecision();
+
+    if (this.skip) {
+      decision.addReason("Execution of PIT should be skipped.");
+    }
+
+    if (this.skipTests) {
+      decision.addReason("Test execution should be skipped (-DskipTests).");
+    }
+
+    if ("pom".equalsIgnoreCase(this.project.getPackaging())) {
+      decision.addReason("Packaging is POM.");
+    }
+
+    if (!notEmptyProject.test(project)) {
+      decision.addReason("Project has no tests, it is empty.");
+    }
+
+    return decision;
   }
 
   public String getMutationEngine() {
@@ -550,15 +660,19 @@ public class AbstractPitMojo extends AbstractMojo {
   }
 
   public List<String> getAdditionalClasspathElements() {
-    return this.additionalClasspathElements;
+    return withoutNulls(this.additionalClasspathElements);
   }
 
   public List<String> getClasspathDependencyExcludes() {
-    return this.classpathDependencyExcludes;
+    return withoutNulls(this.classpathDependencyExcludes);
   }
 
   public boolean isParseSurefireConfig() {
     return this.parseSurefireConfig;
+  }
+
+  public boolean skipFailingTests() {
+    return this.skipFailingTests;
   }
 
   public Map<String, String> getPluginProperties() {
@@ -574,7 +688,45 @@ public class AbstractPitMojo extends AbstractMojo {
   }
 
   public ArrayList<String> getExcludedRunners() {
-    return excludedRunners;
+    return withoutNulls(excludedRunners);
   }
   
+  public ArrayList<String> getFeatures() {
+    return withoutNulls(features);
+  }
+
+  public String getTestPlugin() {
+    return testPlugin;
+  }
+   
+  public boolean isUseClasspathJar() {
+    return this.useClasspathJar;
+  }
+
+  static class RunDecision {
+    private List<String> reasons = new ArrayList<>(4);
+
+    boolean shouldRun() {
+      return reasons.isEmpty();
+    }
+
+    public void addReason(String reason) {
+      reasons.add(reason);
+    }
+
+    public List<String> getReasons() {
+      return Collections.unmodifiableList(reasons);
+    }
+  }
+
+  private <X> ArrayList<X> withoutNulls(List<X> originalList) {
+    if (originalList == null) {
+      return null;
+    }
+
+    return originalList.stream()
+        .filter(Objects::nonNull)
+        .collect(Collectors.toCollection(ArrayList::new));
+  }
+
 }

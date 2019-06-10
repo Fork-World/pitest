@@ -3,12 +3,11 @@ package org.pitest.coverage.analysis;
 import java.util.List;
 
 import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.MethodNode;
+import org.pitest.bytecode.ASMVersion;
 import org.pitest.coverage.CoverageClassVisitor;
 import org.pitest.mutationtest.engine.gregor.analysis.DefaultInstructionCounter;
 import org.pitest.mutationtest.engine.gregor.analysis.InstructionTrackingMethodVisitor;
-
 import sun.pitest.CodeCoverageStore;
 
 /**
@@ -29,7 +28,7 @@ public class CoverageAnalyser extends MethodNode {
       final int probeOffset, final MethodVisitor mv, final int access,
       final String name, final String desc, final String signature,
       final String[] exceptions) {
-    super(Opcodes.ASM5, access, name, desc, signature, exceptions);
+    super(ASMVersion.ASM_VERSION, access, name, desc, signature, exceptions);
     this.mv = mv;
     this.parent = parent;
     this.classId = classId;
@@ -45,34 +44,11 @@ public class CoverageAnalyser extends MethodNode {
     CodeCoverageStore.registerMethod(this.classId, this.name, this.desc,
         this.probeOffset, (this.probeOffset + blocks.size()) - 1);
 
-    // according to the jvm spec
-    // "There must never be an uninitialized class instance in a local variable in code protected by an exception handler"
-    // the code to add finally blocks used by the local variable and array based
-    // probe approaches is not currently
-    // able to meet this guarantee for constructors. Although they appear to
-    // work, they are rejected by the
-    // java 7 verifier - hence fall back to a simple but slow approach.
     final DefaultInstructionCounter counter = new DefaultInstructionCounter();
-
-    if ((blockCount == 1) || this.name.equals("<init>")) {
-      accept(new InstructionTrackingMethodVisitor(
-          new SimpleBlockCoverageVisitor(blocks, counter, this.classId,
-              this.mv, this.access, this.name, this.desc, this.probeOffset),
-              counter));
-    } else if ((blockCount <= MAX_SUPPORTED_LOCAL_PROBES) && (blockCount >= 1)) {
-      accept(new InstructionTrackingMethodVisitor(
-          new LocalVariableCoverageMethodVisitor(blocks, counter, this.classId,
-              this.mv, this.access, this.name, this.desc, this.probeOffset),
-              counter));
-    } else {
-      // for now fall back to the naive implementation - could instead use array
-      // passing version
-      accept(new InstructionTrackingMethodVisitor(
-          new ArrayProbeCoverageMethodVisitor(blocks, counter, this.classId,
-              this.mv, this.access, this.name, this.desc, this.probeOffset),
-              counter));
-    }
-
+    accept(new InstructionTrackingMethodVisitor(
+        new ArrayProbeCoverageMethodVisitor(blocks, counter, this.classId,
+            this.mv, this.access, parent.getClassName(), this.name, this.desc,
+            this.probeOffset), counter));
   }
 
   private List<Block> findRequriedProbeLocations() {

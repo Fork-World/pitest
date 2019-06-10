@@ -20,6 +20,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.junit.Assume.assumeFalse;
 
 import java.io.File;
 import java.io.IOException;
@@ -109,10 +110,10 @@ public class PitMojoIT {
     String actual = readResults(testDir);
     assertThat(actual)
         .contains(
-            "<mutation detected='true' status='KILLED'><sourceFile>Covered.java</sourceFile>");
+            "<mutation detected='true' status='KILLED' numberOfTestsRun='3'><sourceFile>Covered.java</sourceFile>");
     assertThat(actual)
         .contains(
-            "<mutation detected='false' status='NO_COVERAGE'><sourceFile>Covered.java</sourceFile>");
+            "<mutation detected='false' status='NO_COVERAGE' numberOfTestsRun='0'><sourceFile>Covered.java</sourceFile>");
     assertThat(actual).doesNotContain("status='RUN_ERROR'");
   }
 
@@ -125,10 +126,10 @@ public class PitMojoIT {
     String actual = readResults(testDir);
     assertThat(actual)
         .contains(
-            "<mutation detected='true' status='KILLED'><sourceFile>Covered.java</sourceFile>");
+            "<mutation detected='true' status='KILLED' numberOfTestsRun='3'><sourceFile>Covered.java</sourceFile>");
     assertThat(actual)
         .contains(
-            "<mutation detected='false' status='NO_COVERAGE'><sourceFile>Covered.java</sourceFile>");
+            "<mutation detected='false' status='NO_COVERAGE' numberOfTestsRun='0'><sourceFile>Covered.java</sourceFile>");
     assertThat(actual).doesNotContain("status='RUN_ERROR'");
   }
 
@@ -144,18 +145,19 @@ public class PitMojoIT {
     assertThat(coverage).contains("Covered");
     assertThat(actual)
         .contains(
-            "<mutation detected='false' status='NO_COVERAGE'><sourceFile>NotCovered.java</sourceFile>");
+            "<mutation detected='false' status='NO_COVERAGE' numberOfTestsRun='0'><sourceFile>NotCovered.java</sourceFile>");
     assertThat(actual)
         .doesNotContain(
-            "<mutation detected='true' status='KILLED'><sourceFile>NotCovered.java</sourceFile>");
+            "<mutation detected='true' status='KILLED' numberOfTestsRun='3'><sourceFile>NotCovered.java</sourceFile>");
     assertThat(actual)
         .contains(
-            "<mutation detected='true' status='KILLED'><sourceFile>Covered.java</sourceFile>");
+            "<mutation detected='true' status='KILLED' numberOfTestsRun='1'><sourceFile>Covered.java</sourceFile>");
   }
 
   @Test
   //@Ignore("test is flakey, possibly due to real non deterministic issue with powermock")
   public void shouldWorkWithPowerMock() throws Exception {
+    skipIfJavaVersionNotSupportByThirdParty();
     File testDir = prepare("/pit-powermock");
     verifier.addCliOption("-DtimeoutConstant=10000");
     verifier.executeGoal("test");
@@ -164,15 +166,15 @@ public class PitMojoIT {
     String actual = readResults(testDir);
     assertThat(actual)
         .contains(
-            "<mutation detected='true' status='KILLED'><sourceFile>PowerMockAgentCallFoo.java</sourceFile>");
+            "<mutation detected='true' status='KILLED' numberOfTestsRun='1'><sourceFile>PowerMockAgentCallFoo.java</sourceFile>");
     assertThat(actual)
         .contains(
-            "<mutation detected='true' status='KILLED'><sourceFile>PowerMockCallsOwnMethod.java</sourceFile>");
+            "<mutation detected='true' status='KILLED' numberOfTestsRun='1'><sourceFile>PowerMockCallsOwnMethod.java</sourceFile>");
     assertThat(actual)
         .contains(
-            "<mutation detected='true' status='KILLED'><sourceFile>PowerMockCallFoo.java</sourceFile>");
+            "<mutation detected='true' status='KILLED' numberOfTestsRun='1'><sourceFile>PowerMockCallFoo.java</sourceFile>");
     assertThat(actual).doesNotContain("status='RUN_ERROR'");
-    assertThat(actual).doesNotContain("<mutation detected='false' status='NO_COVERAGE'><sourceFile>PowerMockCallsOwnMethod.java</sourceFile><mutatedClass>com.example.PowerMockCallsOwnMethod</mutatedClass><mutatedMethod>branchedCode</mutatedMethod>");
+    assertThat(actual).doesNotContain("<mutation detected='false' status='NO_COVERAGE' numberOfTestsRun='0'><sourceFile>PowerMockCallsOwnMethod.java</sourceFile><mutatedClass>com.example.PowerMockCallsOwnMethod</mutatedClass><mutatedMethod>branchedCode</mutatedMethod>");
   }
 
   @Test
@@ -185,7 +187,7 @@ public class PitMojoIT {
     String actual = readResults(testDir);
     assertThat(actual)
         .contains(
-            "<mutation detected='true' status='KILLED'><sourceFile>MyRequest.java</sourceFile>");
+            "<mutation detected='true' status='KILLED' numberOfTestsRun='2'><sourceFile>MyRequest.java</sourceFile>");
   }
 
   /*
@@ -233,6 +235,40 @@ public class PitMojoIT {
   }
 
   /*
+   * Verifies that running PIT compute the result of the two sub-module
+   */
+  @Test
+  public void shouldComputeReportOfTheSubModule()
+      throws Exception {
+    //Given
+    File testDir = prepare("/pit-sub-module");
+
+    verifier.executeGoal("test");
+    verifier.executeGoal("org.pitest:pitest-maven:mutationCoverage");
+
+
+    //When
+    verifier.executeGoal("org.pitest:pitest-maven:report-aggregate-module");
+
+    //Then
+    File siteParentDir = buildFilePath(testDir, "target", "pit-reports");
+    assertThat(buildFilePath(siteParentDir, "index.html")).exists();
+    String projectReportsHtmlContents = FileUtils
+            .readFileToString(buildFilePath(testDir, "target", "pit-reports",
+                    "index.html"));
+
+    assertTrue("miss data of subModule 1",
+            projectReportsHtmlContents
+                    .contains("<a href=\"./org.example1/index.html\">org.example1</a>"));
+
+    assertTrue("miss data of subModule 2",
+
+            projectReportsHtmlContents
+                    .contains("<a href=\"./org.example2/index.html\">org.example2</a>"));
+
+  }
+
+  /*
    * Verifies that, when multiple timestamped PIT reports have been generated,
    * only the latest report is copied to the site reports directory. This test
    * sets the earlier directory (201503292032) as the last modified. This tests
@@ -277,10 +313,7 @@ public class PitMojoIT {
     } catch (VerificationException e) {
       assertThat(e.getMessage())
           .containsSequence(
-              "[ERROR] Failed to execute goal org.apache.maven.plugins:maven-site-plugin:",
-              ":site (default-site) on project pit-site-reportonly: Execution default-site of goal org.apache.maven.plugins:maven-site-plugin:",
-              ":site failed: could not find reports directory",
-              "pit-site-reportonly/target/pit-reports");
+              "could not find reports directory");
     }
   }
 
@@ -324,11 +357,12 @@ public class PitMojoIT {
     String actual = readResults(testDir);
     assertThat(actual)
         .contains(
-            "<mutation detected='false' status='NO_COVERAGE'><sourceFile>NotCovered.java</sourceFile>");
+            "<mutation detected='false' status='NO_COVERAGE' numberOfTestsRun='0'><sourceFile>NotCovered.java</sourceFile>");
   }
 
   @Test
   public void shouldWorkWithGWTMockito() throws Exception {
+    skipIfJavaVersionNotSupportByThirdParty();
     File testDir = prepare("/pit-183-gwtmockito");
     verifier.executeGoal("test");
     verifier.executeGoal("org.pitest:pitest-maven:mutationCoverage");
@@ -336,11 +370,16 @@ public class PitMojoIT {
     String actual = readResults(testDir);
     assertThat(actual)
         .contains(
-            "<mutation detected='true' status='KILLED'><sourceFile>MyWidget.java</sourceFile>");
+            "<mutation detected='true' status='KILLED' numberOfTestsRun='3'><sourceFile>MyWidget.java</sourceFile>");
     assertThat(actual)
         .contains(
-            "<mutation detected='false' status='SURVIVED'><sourceFile>MyWidget.java</sourceFile>");
+            "<mutation detected='false' status='SURVIVED' numberOfTestsRun='7'><sourceFile>MyWidget.java</sourceFile>");
     assertThat(actual).doesNotContain("status='RUN_ERROR'");
+  }
+
+  private void skipIfJavaVersionNotSupportByThirdParty() {
+    String javaVersion = System.getProperty("java.version");
+    assumeFalse(javaVersion.startsWith("9") || javaVersion.startsWith("10") || javaVersion.startsWith("11"));
   }
 
   @Test
@@ -352,10 +391,11 @@ public class PitMojoIT {
     String actual = readResults(testDir);
     assertThat(actual)
             .contains(
-                    "<mutation detected='true' status='KILLED'><sourceFile>SomeClass.java</sourceFile>");
+                    "<mutation detected='true' status='KILLED' numberOfTestsRun='1'><sourceFile>SomeClass.java</sourceFile>");
     assertThat(actual).doesNotContain("status='NO_COVERAGE'");
     assertThat(actual).doesNotContain("status='RUN_ERROR'");
   }
+
 
   private static String readResults(File testDir) throws IOException {
     File mutationReport = new File(testDir.getAbsoluteFile() + File.separator
@@ -510,5 +550,6 @@ public class PitMojoIT {
         projectReportsHtmlContents
             .contains("<a href=\"pit-reports/index.html\" title=\"PIT Test Report\">PIT Test Report</a>"));
   }
+
 
 }

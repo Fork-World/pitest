@@ -48,7 +48,7 @@ public class MutantStarterTest {
 
   @Test
   public void shouldConstructMuteeUsingNoArgConstructor() throws Exception {
-    final TestMutee createdMutant = new MutantStarter<TestMutee>(
+    final TestMutee createdMutant = new MutantStarter<>(
         TestMutee.class).call();
     assertNotNull(createdMutant);
   }
@@ -56,7 +56,7 @@ public class MutantStarterTest {
   @Test
   public void shouldConstructMuteeInCallMethod() throws Exception {
     TestMutee.muteeCreated = false;
-    final MutantStarter<TestMutee> starter = new MutantStarter<TestMutee>(
+    final MutantStarter<TestMutee> starter = new MutantStarter<>(
         TestMutee.class);
 
     assertFalse("TestMutee has not been created yet.", TestMutee.muteeCreated);
@@ -77,12 +77,7 @@ public class MutantStarterTest {
 
     @Override
     protected Callable<Integer> constructMutee() throws Exception {
-      return new Callable<Integer>() {
-        @Override
-        public Integer call() throws Exception {
-          return MutantStarterSubclass.this.number;
-        }
-      };
+      return () -> MutantStarterSubclass.this.number;
     }
   }
 

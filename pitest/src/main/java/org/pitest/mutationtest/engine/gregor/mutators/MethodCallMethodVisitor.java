@@ -24,11 +24,12 @@ import static org.objectweb.asm.Opcodes.POP2;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.BiFunction;
 
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
-import org.pitest.functional.F2;
+import org.pitest.bytecode.ASMVersion;
 import org.pitest.mutationtest.engine.MutationIdentifier;
 import org.pitest.mutationtest.engine.gregor.MethodInfo;
 import org.pitest.mutationtest.engine.gregor.MethodMutatorFactory;
@@ -36,9 +37,9 @@ import org.pitest.mutationtest.engine.gregor.MutationContext;
 
 class MethodCallMethodVisitor extends MethodVisitor {
 
-  private static final Map<Type, Integer>   RETURN_TYPE_MAP = new HashMap<Type, Integer>();
+  private static final Map<Type, Integer>   RETURN_TYPE_MAP = new HashMap<>();
 
-  private final F2<String, String, Boolean> filter;
+  private final BiFunction<String, String, Boolean> filter;
   private final MethodMutatorFactory        factory;
   private final MutationContext             context;
   private final MethodInfo                  methodInfo;
@@ -57,8 +58,8 @@ class MethodCallMethodVisitor extends MethodVisitor {
   MethodCallMethodVisitor(final MethodInfo methodInfo,
       final MutationContext context, final MethodVisitor writer,
       final MethodMutatorFactory factory,
-      final F2<String, String, Boolean> filter) {
-    super(Opcodes.ASM5, writer);
+      final BiFunction<String, String, Boolean> filter) {
+    super(ASMVersion.ASM_VERSION, writer);
     this.factory = factory;
     this.filter = filter;
     this.context = context;

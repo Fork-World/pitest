@@ -29,16 +29,16 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Properties;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
 import org.pitest.classpath.ClassFilter;
 import org.pitest.classpath.ClassPath;
 import org.pitest.classpath.ClassPathRoot;
 import org.pitest.classpath.PathFilter;
 import org.pitest.classpath.ProjectClassPaths;
-import org.pitest.functional.F;
 import org.pitest.functional.FCollection;
-import org.pitest.functional.Option;
-import org.pitest.functional.predicate.Predicate;
+import java.util.Optional;
 import org.pitest.functional.prelude.Prelude;
 import org.pitest.help.Help;
 import org.pitest.help.PitHelpError;
@@ -61,6 +61,8 @@ import org.pitest.util.Unchecked;
  */
 public class ReportOptions {
 
+  public static final List<String> DEFAULT_CHILD_JVM_ARGS = Collections.singletonList("-Djava.awt.headless=true");
+
   public static final Collection<String> LOGGING_CLASSES                = Arrays
       .asList(
           "java.util.logging",
@@ -69,11 +71,14 @@ public class ReportOptions {
           "org.slf4j",
           "org.apache.commons.logging");
 
-  private Collection<Predicate<String>>  targetClasses;
-  private Collection<Predicate<String>>  excludedMethods                = Collections
+  private Collection<String>             targetClasses;
+  private Collection<String>             excludedMethods                = Collections
       .emptyList();
 
-  private Collection<Predicate<String>>  excludedClasses                = Collections
+  private Collection<String>             excludedClasses                = Collections
+      .emptyList();
+
+  private Collection<Predicate<String>>  excludedTestClasses            = Collections
       .emptyList();
 
   private Collection<String>             codePaths;
@@ -86,27 +91,30 @@ public class ReportOptions {
   private Collection<File>               sourceDirs;
   private Collection<String>             classPathElements;
   private Collection<String>             mutators;
+  private Collection<String>             features;
 
   private int                            dependencyAnalysisMaxDistance;
-  private boolean                        mutateStaticInitializers       = false;
 
-  private final List<String>             jvmArgs                        = new ArrayList<String>();
+  private final List<String>             jvmArgs                        = new ArrayList<>(DEFAULT_CHILD_JVM_ARGS);
   private int                            numberOfThreads                = 0;
   private float                          timeoutFactor                  = PercentAndConstantTimeoutStrategy.DEFAULT_FACTOR;
   private long                           timeoutConstant                = PercentAndConstantTimeoutStrategy.DEFAULT_CONSTANT;
 
   private Collection<Predicate<String>>  targetTests;
 
-  private Collection<String>             loggingClasses                 = new ArrayList<String>();
+  private Collection<String>             loggingClasses                 = new ArrayList<>();
 
   private int                            maxMutationsPerClass;
 
   private boolean                        verbose                        = false;
   private boolean                        failWhenNoMutations            = false;
+  private boolean                        skipFailingTests               = false;
 
-  private final Collection<String>       outputs                        = new LinkedHashSet<String>();
+  private final Collection<String>       outputs                        = new LinkedHashSet<>();
 
   private TestGroupConfig                groupConfig;
+
+  private boolean                        fullMutationMatrix            = false;
 
   private int                            mutationUnitSize;
   private boolean                        shouldCreateTimestampedReports = true;
@@ -124,8 +132,14 @@ public class ReportOptions {
   private Properties                     properties;
 
   private int maxSurvivors;
+
+  private Collection<String>             excludedRunners                = new ArrayList<>();
+  private Collection<String>             includedTestMethods            = new ArrayList<>();
+
+  private String                         testPlugin                     = "";
   
-  private Collection<String>             excludedRunners                = new ArrayList<String>();
+  private boolean                        useClasspathJar;
+
 
   public boolean isVerbose() {
     return this.verbose;
@@ -184,6 +198,15 @@ public class ReportOptions {
     this.mutators = mutators;
   }
 
+
+  public Collection<String> getFeatures() {
+    return this.features;
+  }
+
+  public void setFeatures(Collection<String> features) {
+    this.features = features;
+  }
+
   /**
    * @return the dependencyAnalysisMaxDistance
    */
@@ -221,50 +244,35 @@ public class ReportOptions {
         FCollection.map(this.classPathElements, stringToFile()));
   }
 
-  private static F<String, File> stringToFile() {
-    return new F<String, File>() {
-
-      @Override
-      public File apply(final String a) {
-        return new File(a);
-      }
-
-    };
+  private static Function<String, File> stringToFile() {
+    return a -> new File(a);
   }
 
-  public Collection<Predicate<String>> getTargetClasses() {
+  public Collection<String> getTargetClasses() {
     return this.targetClasses;
   }
 
-  @SuppressWarnings("unchecked")
+
   public Predicate<String> getTargetClassesFilter() {
-    final Predicate<String> filter = Prelude.and(or(this.targetClasses),
-        not(isBlackListed(ReportOptions.this.excludedClasses)));
+    final Predicate<String> filter = Prelude.and(or(Glob.toGlobPredicates(this.targetClasses)),
+        not(isBlackListed(Glob.toGlobPredicates(ReportOptions.this.excludedClasses))));
     checkNotTryingToMutateSelf(filter);
     return filter;
   }
 
   private void checkNotTryingToMutateSelf(final Predicate<String> filter) {
-    if (filter.apply(Pitest.class.getName())) {
+    if (filter.test(Pitest.class.getName())) {
       throw new PitHelpError(Help.BAD_FILTER);
     }
   }
 
-  public void setTargetClasses(final Collection<Predicate<String>> targetClasses) {
+  public void setTargetClasses(final Collection<String> targetClasses) {
     this.targetClasses = targetClasses;
   }
 
   public void setTargetTests(
       final Collection<Predicate<String>> targetTestsPredicates) {
     this.targetTests = targetTestsPredicates;
-  }
-
-  public boolean isMutateStaticInitializers() {
-    return this.mutateStaticInitializers;
-  }
-
-  public void setMutateStaticInitializers(final boolean mutateStaticInitializers) {
-    this.mutateStaticInitializers = mutateStaticInitializers;
   }
 
   public int getNumberOfThreads() {
@@ -295,16 +303,16 @@ public class ReportOptions {
     return this.targetTests;
   }
 
-  @SuppressWarnings("unchecked")
   public Predicate<String> getTargetTestsFilter() {
     if ((this.targetTests == null) || this.targetTests.isEmpty()) {
-      return this.getTargetClassesFilter(); // if no tests specified assume the
-      // target classes filter covers both
+      // If target tests is not explicitly set we assume that the
+      // target classes predicate covers both classes and tests
+      return Prelude.and(or(Glob.toGlobPredicates(this.targetClasses)),
+          not(isBlackListed(ReportOptions.this.excludedTestClasses)));
     } else {
       return Prelude.and(or(this.targetTests),
-          not(isBlackListed(ReportOptions.this.excludedClasses)));
+          not(isBlackListed(ReportOptions.this.excludedTestClasses)));
     }
-
   }
 
   private static Predicate<String> isBlackListed(
@@ -324,21 +332,13 @@ public class ReportOptions {
     this.loggingClasses = loggingClasses;
   }
 
-  public Collection<Predicate<String>> getExcludedMethods() {
+  public Collection<String> getExcludedMethods() {
     return this.excludedMethods;
   }
 
   public void setExcludedMethods(
-      final Collection<Predicate<String>> excludedMethods) {
+      final Collection<String> excludedMethods) {
     this.excludedMethods = excludedMethods;
-  }
-
-  public int getMaxMutationsPerClass() {
-    return this.maxMutationsPerClass;
-  }
-
-  public void setMaxMutationsPerClass(final int maxMutationsPerClass) {
-    this.maxMutationsPerClass = maxMutationsPerClass;
   }
 
   public void setVerbose(final boolean verbose) {
@@ -346,8 +346,13 @@ public class ReportOptions {
   }
 
   public void setExcludedClasses(
-      final Collection<Predicate<String>> excludedClasses) {
+      final Collection<String> excludedClasses) {
     this.excludedClasses = excludedClasses;
+  }
+
+  public void setExcludedTestClasses(
+      final Collection<Predicate<String>> excludedClasses) {
+    this.excludedTestClasses = excludedClasses;
   }
 
   public void addOutputFormats(final Collection<String> formats) {
@@ -358,8 +363,12 @@ public class ReportOptions {
     return this.outputs;
   }
 
-  public Collection<Predicate<String>> getExcludedClasses() {
+  public Collection<String> getExcludedClasses() {
     return this.excludedClasses;
+  }
+
+  public Collection<Predicate<String>> getExcludedTestClasses() {
+    return this.excludedTestClasses;
   }
 
   public boolean shouldFailWhenNoMutations() {
@@ -368,6 +377,14 @@ public class ReportOptions {
 
   public void setFailWhenNoMutations(final boolean failWhenNoMutations) {
     this.failWhenNoMutations = failWhenNoMutations;
+  }
+
+  public boolean skipFailingTests() {
+    return skipFailingTests;
+  }
+
+  public void setSkipFailingTests(final boolean skipFailingTests) {
+    this.skipFailingTests = skipFailingTests;
   }
 
   public ProjectClassPaths getMutationClassPaths() {
@@ -409,6 +426,14 @@ public class ReportOptions {
 
   public TestGroupConfig getGroupConfig() {
     return this.groupConfig;
+  }
+
+  public void setFullMutationMatrix(final boolean fullMutationMatrix) {
+    this.fullMutationMatrix = fullMutationMatrix;
+  }
+
+  public boolean isFullMutationMatrix() {
+    return fullMutationMatrix;
   }
 
   public int getMutationUnitSize() {
@@ -457,18 +482,18 @@ public class ReportOptions {
     return new FileWriterFactory(this.historyOutputLocation);
   }
 
-  public Option<Reader> createHistoryReader() {
+  public Optional<Reader> createHistoryReader() {
     if (this.historyInputLocation == null) {
-      return Option.none();
+      return Optional.empty();
     }
 
     try {
       if (this.historyInputLocation.exists()
           && (this.historyInputLocation.length() > 0)) {
-        return Option.<Reader> some(new InputStreamReader(new FileInputStream(
+        return Optional.<Reader> ofNullable(new InputStreamReader(new FileInputStream(
             this.historyInputLocation), "UTF-8"));
       }
-      return Option.none();
+      return Optional.empty();
     } catch (final IOException ex) {
       throw Unchecked.translateCheckedException(ex);
     }
@@ -547,46 +572,84 @@ public class ReportOptions {
   }
 
   public int getMaximumAllowedSurvivors() {
-    return maxSurvivors;
+    return this.maxSurvivors;
   }
-  
+
   public void setMaximumAllowedSurvivors(int maxSurvivors) {
     this.maxSurvivors = maxSurvivors;
   }
-  
+
   public Collection<String> getExcludedRunners() {
-    return excludedRunners;
+    return this.excludedRunners;
+  }
+
+  public Collection<String> getIncludedTestMethods() {
+    return this.includedTestMethods;
   }
 
   public void setExcludedRunners(Collection<String> excludedRunners) {
     this.excludedRunners = excludedRunners;
   }
 
+  public void setIncludedTestMethods(Collection<String> includedTestMethods) {
+    this.includedTestMethods = includedTestMethods;
+  }
+
+  /**
+   * Creates a serializable subset of data for use in child processes
+   */
+  public TestPluginArguments createMinionSettings() {
+    return new TestPluginArguments(getTestPlugin(), this.getGroupConfig(), this.getExcludedRunners(),
+            this.getIncludedTestMethods(), this.skipFailingTests());
+  }
+
+  public String getTestPlugin() {
+    return this.testPlugin;
+  }
+
+  public void setTestPlugin(String testPlugin) {
+    this.testPlugin = testPlugin;
+  }
+
+  public boolean useClasspathJar() {
+    return useClasspathJar;
+  }
+
+  public void setUseClasspathJar(boolean useClasspathJar) {
+    this.useClasspathJar = useClasspathJar;
+  }
+
   @Override
   public String toString() {
     return "ReportOptions [targetClasses=" + targetClasses
         + ", excludedMethods=" + excludedMethods + ", excludedClasses="
-        + excludedClasses + ", codePaths=" + codePaths + ", reportDir="
-        + reportDir + ", historyInputLocation=" + historyInputLocation
+        + excludedClasses + ", excludedTestClasses=" + excludedTestClasses
+        + ", codePaths=" + codePaths + ", reportDir=" + reportDir
+        + ", historyInputLocation=" + historyInputLocation
         + ", historyOutputLocation=" + historyOutputLocation + ", sourceDirs="
         + sourceDirs + ", classPathElements=" + classPathElements
-        + ", mutators=" + mutators + ", dependencyAnalysisMaxDistance="
-        + dependencyAnalysisMaxDistance + ", mutateStaticInitializers="
-        + mutateStaticInitializers + ", jvmArgs=" + jvmArgs
-        + ", numberOfThreads=" + numberOfThreads + ", timeoutFactor="
-        + timeoutFactor + ", timeoutConstant=" + timeoutConstant
-        + ", targetTests=" + targetTests + ", loggingClasses=" + loggingClasses
-        + ", maxMutationsPerClass=" + maxMutationsPerClass + ", verbose="
-        + verbose + ", failWhenNoMutations=" + failWhenNoMutations
-        + ", outputs=" + outputs + ", groupConfig=" + groupConfig
-        + ", mutationUnitSize=" + mutationUnitSize
+        + ", mutators=" + mutators + ", features=" + features
+        + ", dependencyAnalysisMaxDistance=" + dependencyAnalysisMaxDistance
+        + ", jvmArgs=" + jvmArgs + ", numberOfThreads=" + numberOfThreads
+        + ", timeoutFactor=" + timeoutFactor + ", timeoutConstant="
+        + timeoutConstant + ", targetTests=" + targetTests + ", loggingClasses="
+        + loggingClasses + ", maxMutationsPerClass=" + maxMutationsPerClass
+        + ", verbose=" + verbose + ", failWhenNoMutations="
+        + failWhenNoMutations + ", outputs=" + outputs + ", groupConfig="
+        + groupConfig + ", fullMutationMatrix=" + fullMutationMatrix + ", mutationUnitSize=" + mutationUnitSize
         + ", shouldCreateTimestampedReports=" + shouldCreateTimestampedReports
         + ", detectInlinedCode=" + detectInlinedCode + ", exportLineCoverage="
         + exportLineCoverage + ", mutationThreshold=" + mutationThreshold
         + ", coverageThreshold=" + coverageThreshold + ", mutationEngine="
         + mutationEngine + ", javaExecutable=" + javaExecutable
-        + ", includeLaunchClasspath=" + includeLaunchClasspath
-        + ", properties=" + properties + ", maxSurvivors=" + maxSurvivors + ", excludedRunners=" + excludedRunners + "]";
+        + ", includeLaunchClasspath=" + includeLaunchClasspath + ", properties="
+        + properties + ", maxSurvivors=" + maxSurvivors + ", excludedRunners="
+        + excludedRunners + ", includedTestMethods=" + includedTestMethods
+        + ", testPlugin=" + testPlugin + ", useClasspathJar=" + useClasspathJar
+        + ", skipFailingTests=" + skipFailingTests + "]";
   }
+
   
+
+
 }

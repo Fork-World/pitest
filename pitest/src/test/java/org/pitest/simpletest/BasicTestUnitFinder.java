@@ -22,12 +22,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
 
-import org.pitest.functional.F;
 import org.pitest.functional.FCollection;
-import org.pitest.functional.Option;
-import org.pitest.functional.SideEffect1;
 import org.pitest.reflection.Reflection;
 import org.pitest.simpletest.steps.CallStep;
 import org.pitest.testapi.Description;
@@ -37,21 +37,21 @@ import org.pitest.util.PitError;
 
 public class BasicTestUnitFinder implements TestUnitFinder {
 
-  private final Set<InstantiationStrategy> instantiationStrategies = new LinkedHashSet<InstantiationStrategy>();
-  private final Set<MethodFinder>          testMethodFinders       = new LinkedHashSet<MethodFinder>();
+  private final Set<InstantiationStrategy> instantiationStrategies = new LinkedHashSet<>();
+  private final MethodFinder          testMethodFinder;
 
   public BasicTestUnitFinder(
       final Collection<InstantiationStrategy> instantiationStrategies,
-      final Collection<MethodFinder> testMethodFinders) {
+      final MethodFinder testMethodFinder) {
     this.instantiationStrategies.addAll(instantiationStrategies);
-    this.testMethodFinders.addAll(testMethodFinders);
+    this.testMethodFinder = testMethodFinder;
   }
 
   @Override
   public List<TestUnit> findTestUnits(final Class<?> testClass) {
     try {
 
-      final List<TestUnit> units = new ArrayList<TestUnit>();
+      final List<TestUnit> units = new ArrayList<>();
       final InstantiationStrategy instantiationStrategy = findInstantiationStrategy(testClass);
       final List<TestStep> instantiations = instantiationStrategy
           .instantiations(testClass);
@@ -84,7 +84,7 @@ public class BasicTestUnitFinder implements TestUnitFinder {
       final TestStep instantiationStep, final String namePrefix,
       final Class<?> testClass, final TestMethod testMethod) {
 
-    final List<TestStep> steps = new ArrayList<TestStep>();
+    final List<TestStep> steps = new ArrayList<>();
 
     steps.add(instantiationStep);
     steps.add(new CallStep(testMethod));
@@ -105,31 +105,18 @@ public class BasicTestUnitFinder implements TestUnitFinder {
     }
   }
 
-  private F<InstantiationStrategy, Boolean> canInstantiate(final Class<?> clazz) {
-    return new F<InstantiationStrategy, Boolean>() {
-
-      @Override
-      public Boolean apply(final InstantiationStrategy a) {
-        return a.canInstantiate(clazz);
-      }
-
-    };
+  private Predicate<InstantiationStrategy> canInstantiate(final Class<?> clazz) {
+    return a -> a.canInstantiate(clazz);
   }
 
   private Collection<TestMethod> findTestMethods(final Class<?> clazz) {
 
-    final EqualitySet<TestMethod> set = new EqualitySet<TestMethod>(
+    final EqualitySet<TestMethod> set = new EqualitySet<>(
         new SignatureEqualityStrategy());
-    final SideEffect1<TestMethod> addToSet = new SideEffect1<TestMethod>() {
-      @Override
-      public void apply(final TestMethod a) {
-        set.add(a);
-      }
-    };
+    final Consumer<Optional<TestMethod>> addToSet = a -> a.ifPresent(m -> set.add(m));
     final Collection<Method> methods = Reflection.allMethods(clazz);
-    for (final F<Method, Option<TestMethod>> mf : this.testMethodFinders) {
-      FCollection.flatMap(methods, mf).forEach(addToSet);
-    }
+    methods.stream().map(this.testMethodFinder).forEach(addToSet);
+
 
     return set.toCollection();
   }

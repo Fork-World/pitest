@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.function.Function;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -28,27 +29,22 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.pitest.classpath.ClassPath;
 import org.pitest.dependency.DependencyAccess.Member;
-import org.pitest.functional.F;
 import org.pitest.functional.FCollection;
 import org.pitest.functional.SideEffect1;
 
 public class DependencyClassVisitorTest {
 
   private DependencyClassVisitor      testee;
-  private final Set<String>           gatheredDependencies = new HashSet<String>();
-  private final Set<DependencyAccess> gatheredAccess       = new HashSet<DependencyAccess>();
+  private final Set<String>           gatheredDependencies = new HashSet<>();
+  private final Set<DependencyAccess> gatheredAccess       = new HashSet<>();
   private final ClassPath             cp                   = new ClassPath();
 
   @Before
   public void setUp() {
-    final SideEffect1<DependencyAccess> se = new SideEffect1<DependencyAccess>() {
-      @Override
-      public void apply(final DependencyAccess a) {
-        DependencyClassVisitorTest.this.gatheredAccess.add(a);
-        DependencyClassVisitorTest.this.gatheredDependencies.add(a.getDest()
-            .getOwner());
-      }
-
+    final SideEffect1<DependencyAccess> se = a -> {
+      DependencyClassVisitorTest.this.gatheredAccess.add(a);
+      DependencyClassVisitorTest.this.gatheredDependencies.add(a.getDest()
+          .getOwner());
     };
     this.testee = new DependencyClassVisitor(new ClassWriter(0), se);
   }
@@ -105,19 +101,13 @@ public class DependencyClassVisitorTest {
   }
 
   private Set<String> classesToNames(final Class<?>... classes) {
-    final Set<String> set = new HashSet<String>();
+    final Set<String> set = new HashSet<>();
     FCollection.mapTo(Arrays.asList(classes), classToJvmName(), set);
     return set;
   }
 
-  private F<Class<?>, String> classToJvmName() {
-    return new F<Class<?>, String>() {
-      @Override
-      public String apply(final Class<?> a) {
-        return a.getName().replace(".", "/");
-      }
-
-    };
+  private Function<Class<?>, String> classToJvmName() {
+    return a -> a.getName().replace(".", "/");
   }
 
 }

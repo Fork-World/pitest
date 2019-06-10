@@ -32,7 +32,7 @@ public class MutationDetailsMother {
 
     MutationDetailsBuilder withIsInFinallyBlock(boolean b);
 
-    MutationDetailsBuilder withPoison(boolean b);
+    MutationDetailsBuilder withPoison(PoisonStatus b);
 
     MutationIdentifier _Id();
 
@@ -46,7 +46,7 @@ public class MutationDetailsMother {
 
     boolean _IsInFinallyBlock();
 
-    boolean _Poison();
+    PoisonStatus _Poison();
 
     List<TestInfo> _TestsInOrder();
   }
@@ -55,21 +55,16 @@ public class MutationDetailsMother {
     return QB.builder(MutationDetailsBuilder.class, seed()).withBlock(0)
         .withDescription("A mutation").withFilename("foo.java")
         .withId(aMutationId()).withLineNumber(42).withIsInFinallyBlock(false)
-        .withPoison(false).withTestsInOrder(Collections.<TestInfo> emptyList());
+        .withPoison(PoisonStatus.NORMAL).withTestsInOrder(Collections.<TestInfo> emptyList());
   }
 
   private static Generator<MutationDetailsBuilder, MutationDetails> seed() {
-    return new Generator<MutationDetailsBuilder, MutationDetails>() {
-
-      @Override
-      public MutationDetails generate(MutationDetailsBuilder b) {
-        MutationDetails md = new MutationDetails(b._Id(), b._Filename(),
-            b._Description(), b._LineNumber(), b._Block(),
-            b._IsInFinallyBlock(), b._Poison());
-        md.addTestsInOrder(b._TestsInOrder());
-        return md;
-      }
-
+    return b -> {
+      final MutationDetails md = new MutationDetails(b._Id(), b._Filename(),
+          b._Description(), b._LineNumber(), b._Block(),
+          b._IsInFinallyBlock(), b._Poison());
+      md.addTestsInOrder(b._TestsInOrder());
+      return md;
     };
   }
 

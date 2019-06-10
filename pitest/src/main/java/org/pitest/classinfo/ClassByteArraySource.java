@@ -14,10 +14,15 @@
  */
 package org.pitest.classinfo;
 
-import org.pitest.functional.Option;
+import java.util.Optional;
 
 public interface ClassByteArraySource {
 
-  Option<byte[]> getBytes(String clazz);
+  /**
+   * Returns bytes for a class represented in java/lang/String format
+   * @param clazz classname in com.example.Foo format
+   * @return bytes option of byte[]
+   */
+  Optional<byte[]> getBytes(String clazz);
 
 }

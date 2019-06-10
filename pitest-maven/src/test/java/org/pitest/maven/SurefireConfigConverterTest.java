@@ -10,7 +10,7 @@ import java.util.Collections;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.codehaus.plexus.util.xml.Xpp3DomBuilder;
 import org.junit.Test;
-import org.pitest.functional.predicate.Predicate;
+import java.util.function.Predicate;
 import org.pitest.mutationtest.config.ReportOptions;
 import org.pitest.testapi.TestGroupConfig;
 import org.pitest.util.Glob;
@@ -32,7 +32,7 @@ public class SurefireConfigConverterTest {
 
     ReportOptions actual = this.testee
         .update(this.options, this.surefireConfig);
-    assertThat(actual.getExcludedClasses()).hasSize(2);
+    assertThat(actual.getExcludedTestClasses()).hasSize(2);
   }
 
   @Test
@@ -42,20 +42,20 @@ public class SurefireConfigConverterTest {
 
     ReportOptions actual = this.testee
         .update(this.options, this.surefireConfig);
-    Predicate<String> predicate = actual.getExcludedClasses().iterator().next();
-    assertThat(predicate.apply("com.example.FailingTest")).isTrue();
-    assertThat(predicate.apply("com.example.Test")).isFalse();
+    Predicate<String> predicate = actual.getExcludedTestClasses().iterator().next();
+    assertThat(predicate.test("com.example.FailingTest")).isTrue();
+    assertThat(predicate.test("com.example.Test")).isFalse();
   }
 
   @Test
   public void shouldKeepExistingExclusions() throws Exception {
     this.surefireConfig = makeConfig("<excludes><exclude>A</exclude><exclude>B</exclude></excludes>");
-    this.options.setExcludedClasses(Collections
+    this.options.setExcludedTestClasses(Collections
         .<Predicate<String>> singletonList(new Glob("Foo")));
     ReportOptions actual = this.testee
         .update(this.options, this.surefireConfig);
 
-    assertThat(actual.getExcludedClasses()).hasSize(3);
+    assertThat(actual.getExcludedTestClasses()).hasSize(3);
   }
 
   @Test
@@ -113,6 +113,36 @@ public class SurefireConfigConverterTest {
         .update(this.options, this.surefireConfig);
 
     assertThat(actual.getGroupConfig().getExcludedGroups()).containsOnly("bar");
+  }
+
+  @Test
+  public void shouldConvertTestFailureIgnoreWhenTrue() throws Exception {
+    this.surefireConfig = makeConfig("<testFailureIgnore>true</testFailureIgnore>");
+
+    ReportOptions actual = this.testee
+        .update(this.options, this.surefireConfig);
+
+    assertThat(actual.skipFailingTests()).isTrue();
+  }
+
+  @Test
+  public void shouldConvertTestFailureIgnoreWhenFalse() throws Exception {
+    this.surefireConfig = makeConfig("<testFailureIgnore>false</testFailureIgnore>");
+
+    ReportOptions actual = this.testee
+        .update(this.options, this.surefireConfig);
+
+    assertThat(actual.skipFailingTests()).isFalse();
+  }
+
+  @Test
+  public void shouldConvertTestFailureIgnoreWhenAbsent() throws Exception {
+    this.surefireConfig = makeConfig("<testFailureIgnore></testFailureIgnore>");
+
+    ReportOptions actual = this.testee
+        .update(this.options, this.surefireConfig);
+
+    assertThat(actual.skipFailingTests()).isFalse();
   }
 
   private Xpp3Dom makeConfig(String s) throws Exception {

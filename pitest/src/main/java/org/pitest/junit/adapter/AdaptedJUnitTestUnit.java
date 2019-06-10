@@ -17,9 +17,6 @@ package org.pitest.junit.adapter;
 
 import static org.pitest.util.Unchecked.translateCheckedException;
 
-import java.lang.reflect.InvocationTargetException;
-import java.util.List;
-import java.util.concurrent.Callable;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -30,60 +27,46 @@ import org.junit.runner.manipulation.Filter;
 import org.junit.runner.manipulation.Filterable;
 import org.junit.runner.manipulation.NoTestsRemainException;
 import org.junit.runners.model.RunnerBuilder;
-import org.pitest.functional.Option;
+import java.util.Optional;
 import org.pitest.testapi.AbstractTestUnit;
 import org.pitest.testapi.ResultCollector;
-import org.pitest.testapi.foreignclassloader.Events;
-import org.pitest.util.ClassLoaderDetectionStrategy;
-import org.pitest.util.IsolationUtils;
 import org.pitest.util.Log;
-import org.pitest.util.Unchecked;
 
 public class AdaptedJUnitTestUnit extends AbstractTestUnit {
 
   private static final Logger                LOG = Log.getLogger();
 
-  private final ClassLoaderDetectionStrategy loaderDetection;
   private final Class<?>                     clazz;
-  private final Option<Filter>               filter;
+  private final Optional<Filter>               filter;
 
-  public AdaptedJUnitTestUnit(final Class<?> clazz, final Option<Filter> filter) {
-    this(IsolationUtils.loaderDetectionStrategy(), clazz, filter);
-  }
 
-  AdaptedJUnitTestUnit(final ClassLoaderDetectionStrategy loaderDetection,
-      final Class<?> clazz, final Option<Filter> filter) {
+  public AdaptedJUnitTestUnit(
+      final Class<?> clazz, final Optional<Filter> filter) {
     super(new org.pitest.testapi.Description(createName(clazz, filter), clazz));
-    this.loaderDetection = loaderDetection;
     this.clazz = clazz;
     this.filter = filter;
   }
 
   private static String createName(final Class<?> clazz,
-      final Option<Filter> filter) {
-    if (filter.hasSome()) {
-      return filter.value().describe();
+      final Optional<Filter> filter) {
+    if (filter.isPresent()) {
+      return filter.get().describe();
     } else {
       return clazz.getName();
     }
   }
 
   @Override
-  public void execute(final ClassLoader loader, final ResultCollector rc) {
+  public void execute(final ResultCollector rc) {
 
     final Runner runner = createRunner(this.clazz);
     checkForErrorRunner(runner);
     filterIfRequired(rc, runner);
 
     try {
-      if (this.loaderDetection.fromDifferentLoader(runner.getClass(), loader)) {
-        executeInDifferentClassLoader(loader, rc, runner);
-
-      } else {
         final CustomRunnerExecutor nativeCe = new CustomRunnerExecutor(
             this.getDescription(), runner, rc);
         nativeCe.run();
-      }
 
     } catch (final Exception e) {
       LOG.log(Level.SEVERE, "Error while running adapter JUnit fixture "
@@ -102,7 +85,7 @@ public class AdaptedJUnitTestUnit extends AbstractTestUnit {
   }
 
   private void filterIfRequired(final ResultCollector rc, final Runner runner) {
-    if (this.filter.hasSome()) {
+    if (this.filter.isPresent()) {
       if (!(runner instanceof Filterable)) {
         LOG.warning("Not able to filter " + runner.getDescription()
             + ". Mutation may have prevented JUnit from constructing test");
@@ -110,7 +93,7 @@ public class AdaptedJUnitTestUnit extends AbstractTestUnit {
       }
       final Filterable f = (Filterable) runner;
       try {
-        f.filter(this.filter.value());
+        f.filter(this.filter.get());
       } catch (final NoTestsRemainException e1) {
         rc.notifySkipped(this.getDescription());
         return;
@@ -131,33 +114,6 @@ public class AdaptedJUnitTestUnit extends AbstractTestUnit {
 
   private static RunnerBuilder createRunnerBuilder() {
     return new AllDefaultPossibilitiesBuilder(true);
-  }
-
-  private void executeInDifferentClassLoader(final ClassLoader loader,
-      final ResultCollector rc, final Runner runner)
-          throws IllegalAccessException, InvocationTargetException {
-
-    // must jump through hoops to run in different class loader
-    // when even our framework classes may be duplicated
-    // translate everything via strings
-    final ForeignClassLoaderCustomRunnerExecutor ce = new ForeignClassLoaderCustomRunnerExecutor(
-        runner);
-    @SuppressWarnings("unchecked")
-    Callable<List<String>> foreignCe = (Callable<List<String>>) IsolationUtils
-    .cloneForLoader(ce, loader);
-
-    try {
-      final List<String> q = foreignCe.call();
-      convertStringsToResults(rc, q);
-    } catch (Exception ex) {
-      throw Unchecked.translateCheckedException(ex);
-    }
-
-  }
-
-  private void convertStringsToResults(final ResultCollector rc,
-      final List<String> q) {
-    Events.applyEvents(q, rc, this.getDescription());
   }
 
   @Override

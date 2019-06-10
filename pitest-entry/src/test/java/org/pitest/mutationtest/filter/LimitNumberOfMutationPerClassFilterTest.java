@@ -24,12 +24,14 @@ import java.util.List;
 
 import org.junit.Before;
 import org.junit.Test;
+import org.pitest.mutationtest.engine.Mutater;
 import org.pitest.mutationtest.engine.MutationDetails;
 import org.pitest.mutationtest.engine.MutationIdentifier;
 
 public class LimitNumberOfMutationPerClassFilterTest {
 
   private LimitNumberOfMutationPerClassFilter testee;
+  private Mutater unused;
 
   @Before
   public void setUp() {
@@ -39,29 +41,29 @@ public class LimitNumberOfMutationPerClassFilterTest {
   @Test
   public void shouldReturnUnalteredCollectionIfCollectionContainsLessThenMaxMutations() {
     final Collection<MutationDetails> expected = make(1, 2);
-    assertSame(expected, this.testee.filter(expected));
+    assertSame(expected, this.testee.intercept(expected, this.unused));
   }
 
   @Test
   public void shouldReturnUnalteredCollectionIfCollectionContainsExactlyMaxMutations() {
     final Collection<MutationDetails> expected = make(1, 2, 3);
-    assertSame(expected, this.testee.filter(expected));
+    assertSame(expected, this.testee.intercept(expected, this.unused));
   }
 
   @Test
   public void shouldTrimCollectionToMaximumAllowedNumber() {
     final Collection<MutationDetails> input = make(1, 2, 3, 4);
-    assertEquals(make(1, 2, 3), this.testee.filter(input));
+    assertEquals(make(1, 2, 3), this.testee.intercept(input, this.unused));
   }
 
   @Test
   public void shouldUseEvenDistributionOfMutations() {
     final Collection<MutationDetails> input = make(1, 2, 3, 4, 5, 6, 7, 8);
-    assertEquals(make(2, 4, 6), this.testee.filter(input));
+    assertEquals(make(2, 4, 6), this.testee.intercept(input, this.unused));
   }
 
   private Collection<MutationDetails> make(final Integer... ids) {
-    final List<MutationDetails> ms = new ArrayList<MutationDetails>();
+    final List<MutationDetails> ms = new ArrayList<>();
     for (final int each : ids) {
       ms.add(makeMutation(each));
     }

@@ -17,13 +17,8 @@ public class EqualitySetTest {
 
   @Before
   public void createTestee() {
-    final EqualityStrategy<String> e = new EqualityStrategy<String>() {
-      @Override
-      public boolean isEqual(final String lhs, final String rhs) {
-        return lhs.equals(rhs);
-      }
-    };
-    this.testee = new EqualitySet<String>(e);
+    final EqualityStrategy<String> e = (lhs, rhs) -> lhs.equals(rhs);
+    this.testee = new EqualitySet<>(e);
   }
 
   @Test
@@ -31,7 +26,7 @@ public class EqualitySetTest {
     this.testee.add("one");
     this.testee.add("two");
     final List<String> expected = Arrays.asList("one", "two");
-    final List<String> actual = new ArrayList<String>();
+    final List<String> actual = new ArrayList<>();
     for (final String each : this.testee) {
       actual.add(each);
     }

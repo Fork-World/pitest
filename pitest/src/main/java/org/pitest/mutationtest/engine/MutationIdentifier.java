@@ -14,6 +14,7 @@
  */
 package org.pitest.mutationtest.engine;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -24,7 +25,9 @@ import org.pitest.classinfo.ClassName;
 /**
  * Uniquely identifies a mutation
  */
-public final class MutationIdentifier implements Comparable<MutationIdentifier> {
+public final class MutationIdentifier implements Comparable<MutationIdentifier>, Serializable {
+
+  private static final long serialVersionUID = 1L;
 
   /**
    * The location at which the mutation occurs
@@ -53,13 +56,13 @@ public final class MutationIdentifier implements Comparable<MutationIdentifier> 
   public MutationIdentifier(final Location location,
       final Collection<Integer> indexes, final String mutatorUniqueId) {
     this.location = location;
-    this.indexes = new ArrayList<Integer>(indexes);
+    this.indexes = new ArrayList<>(indexes);
     this.mutator = mutatorUniqueId;
   }
 
   /**
    * Returns the location of the mutations
-   * 
+   *
    * @return the location of the mutation
    */
   public Location getLocation() {
@@ -68,7 +71,7 @@ public final class MutationIdentifier implements Comparable<MutationIdentifier> 
 
   /**
    * Returns the name of the mutator that created this mutation
-   * 
+   *
    * @return the mutator name
    */
   public String getMutator() {
@@ -93,7 +96,7 @@ public final class MutationIdentifier implements Comparable<MutationIdentifier> 
 
   /**
    * Returns true if this mutation has a matching identifier
-   * 
+   *
    * @param id
    *          the MutationIdentifier to match
    * @return true if the MutationIdentifier matches otherwise false
@@ -105,7 +108,7 @@ public final class MutationIdentifier implements Comparable<MutationIdentifier> 
 
   /**
    * Returns the class in which this mutation is located
-   * 
+   *
    * @return class in which mutation is located
    */
   public ClassName getClassName() {

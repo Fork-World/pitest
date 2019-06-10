@@ -17,14 +17,13 @@ package org.pitest.mutationtest.engine.gregor;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
 import org.pitest.classinfo.ClassByteArraySource;
-import org.pitest.functional.F;
 import org.pitest.functional.FCollection;
-import org.pitest.functional.predicate.Predicate;
 import org.pitest.mutationtest.engine.Mutater;
 import org.pitest.mutationtest.engine.MutationEngine;
-import org.pitest.mutationtest.engine.gregor.inlinedcode.InlinedCodeFilter;
 
 /**
  * The default (and currently only) mutation engine for PIT.
@@ -34,22 +33,18 @@ import org.pitest.mutationtest.engine.gregor.inlinedcode.InlinedCodeFilter;
  */
 public class GregorMutationEngine implements MutationEngine {
 
-  private final Set<MethodMutatorFactory> mutationOperators = new LinkedHashSet<MethodMutatorFactory>();
-  private final Set<String>               loggingClasses    = new LinkedHashSet<String>();
+  private final Set<MethodMutatorFactory> mutationOperators = new LinkedHashSet<>();
   private final Predicate<MethodInfo>     methodFilter;
-  private final InlinedCodeFilter         inlinedCodeDetector;
 
   public GregorMutationEngine(final MutationEngineConfiguration config) {
     this.methodFilter = config.methodFilter();
     this.mutationOperators.addAll(config.mutators());
-    this.loggingClasses.addAll(config.doNotMutateCallsTo());
-    this.inlinedCodeDetector = config.inlinedCodeDetector();
   }
 
   @Override
   public Mutater createMutator(final ClassByteArraySource byteSource) {
     return new GregorMutater(byteSource, this.methodFilter,
-        this.mutationOperators, this.loggingClasses, this.inlinedCodeDetector);
+        this.mutationOperators);
   }
 
   @Override
@@ -63,15 +58,13 @@ public class GregorMutationEngine implements MutationEngine {
     return FCollection.map(this.mutationOperators, toName());
   }
 
-  private static F<MethodMutatorFactory, String> toName() {
-    return new F<MethodMutatorFactory, String>() {
+  private static Function<MethodMutatorFactory, String> toName() {
+    return a -> a.getName();
+  }
 
-      @Override
-      public String apply(final MethodMutatorFactory a) {
-        return a.getName();
-      }
-
-    };
+  @Override
+  public String getName() {
+    return "gregor";
   }
 
 }

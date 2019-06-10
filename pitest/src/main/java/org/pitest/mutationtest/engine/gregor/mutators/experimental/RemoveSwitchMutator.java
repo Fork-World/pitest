@@ -5,7 +5,7 @@ import java.util.List;
 
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Opcodes;
+import org.pitest.bytecode.ASMVersion;
 import org.pitest.mutationtest.engine.MutationIdentifier;
 import org.pitest.mutationtest.engine.gregor.MethodInfo;
 import org.pitest.mutationtest.engine.gregor.MethodMutatorFactory;
@@ -17,15 +17,19 @@ import org.pitest.mutationtest.engine.gregor.MutationContext;
  */
 public class RemoveSwitchMutator implements MethodMutatorFactory {
   // EXPERIMENTAL_REMOVE_SWITCH_MUTATOR;
+  private static final String REMOVE_SWITCH_MUTATOR_NAME = "EXPERIMENTAL_REMOVE_SWITCH_MUTATOR_";
+  private static final int GENERATE_FROM_INCLUDING = 0;
+  private static final int GENERATE_UPTO_EXCLUDING = 100;
+
   private final int key;
 
-  public RemoveSwitchMutator(final int i) {
+  RemoveSwitchMutator(final int i) {
     this.key = i;
   }
 
   public static Iterable<MethodMutatorFactory> makeMutators() {
-    List<MethodMutatorFactory> variations = new ArrayList<MethodMutatorFactory>();
-    for (int i = 0; i != 100; i++) {
+    final List<MethodMutatorFactory> variations = new ArrayList<>();
+    for (int i = GENERATE_FROM_INCLUDING; i != GENERATE_UPTO_EXCLUDING; i++) {
       variations.add(new RemoveSwitchMutator(i));
     }
     return variations;
@@ -44,12 +48,12 @@ public class RemoveSwitchMutator implements MethodMutatorFactory {
 
   @Override
   public String getName() {
-    return toString();
+    return REMOVE_SWITCH_MUTATOR_NAME + "[" + GENERATE_FROM_INCLUDING + "-" + (GENERATE_UPTO_EXCLUDING - 1) + "]";
   }
 
   @Override
   public String toString() {
-    return "EXPERIMENTAL_REMOVE_SWITCH_MUTATOR_" + this.key;
+    return REMOVE_SWITCH_MUTATOR_NAME + this.key;
   }
 
   private final class RemoveSwitchMethodVisitor extends MethodVisitor {
@@ -58,7 +62,7 @@ public class RemoveSwitchMutator implements MethodMutatorFactory {
 
     RemoveSwitchMethodVisitor(final MutationContext context,
         final MethodVisitor methodVisitor) {
-      super(Opcodes.ASM5, methodVisitor);
+      super(ASMVersion.ASM_VERSION, methodVisitor);
       this.context = context;
     }
 
@@ -66,7 +70,7 @@ public class RemoveSwitchMutator implements MethodMutatorFactory {
     public void visitTableSwitchInsn(final int i, final int i1,
         final Label defaultLabel, final Label... labels) {
       if ((labels.length > RemoveSwitchMutator.this.key) && shouldMutate()) {
-        Label[] newLabels = labels.clone();
+        final Label[] newLabels = labels.clone();
         newLabels[RemoveSwitchMutator.this.key] = defaultLabel;
         super.visitTableSwitchInsn(i, i1, defaultLabel, newLabels);
       } else {
@@ -78,7 +82,7 @@ public class RemoveSwitchMutator implements MethodMutatorFactory {
     public void visitLookupSwitchInsn(final Label defaultLabel,
         final int[] ints, final Label[] labels) {
       if ((labels.length > RemoveSwitchMutator.this.key) && shouldMutate()) {
-        Label[] newLabels = labels.clone();
+        final Label[] newLabels = labels.clone();
         newLabels[RemoveSwitchMutator.this.key] = defaultLabel;
         super.visitLookupSwitchInsn(defaultLabel, ints, newLabels);
       } else {

@@ -17,12 +17,12 @@ package org.pitest.mutationtest.engine.gregor;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.function.Predicate;
 
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Opcodes;
+import org.pitest.bytecode.ASMVersion;
 import org.pitest.classinfo.ClassName;
-import org.pitest.functional.F;
 import org.pitest.mutationtest.engine.Location;
 import org.pitest.mutationtest.engine.MethodName;
 import org.pitest.mutationtest.engine.gregor.analysis.InstructionTrackingMethodVisitor;
@@ -30,20 +30,17 @@ import org.pitest.mutationtest.engine.gregor.blocks.BlockTrackingMethodDecorator
 
 class MutatingClassVisitor extends ClassVisitor {
 
-  private final F<MethodInfo, Boolean>    filter;
+  private final Predicate<MethodInfo>    filter;
   private final ClassContext              context;
-  private final Set<MethodMutatorFactory> methodMutators = new HashSet<MethodMutatorFactory>();
-  private final PremutationClassInfo      classInfo;
+  private final Set<MethodMutatorFactory> methodMutators = new HashSet<>();
 
   MutatingClassVisitor(final ClassVisitor delegateClassVisitor,
-      final ClassContext context, final F<MethodInfo, Boolean> filter,
-      final PremutationClassInfo classInfo,
+      final ClassContext context, final Predicate<MethodInfo> filter,
       final Collection<MethodMutatorFactory> mutators) {
-    super(Opcodes.ASM5, delegateClassVisitor);
+    super(ASMVersion.ASM_VERSION, delegateClassVisitor);
     this.context = context;
     this.filter = filter;
     this.methodMutators.addAll(mutators);
-    this.classInfo = classInfo;
   }
 
   @Override
@@ -65,7 +62,7 @@ class MutatingClassVisitor extends ClassVisitor {
       final String methodDescriptor, final String signature,
       final String[] exceptions) {
 
-    MethodMutationContext methodContext = new MethodMutationContext(
+    final MethodMutationContext methodContext = new MethodMutationContext(
         this.context, Location.location(
             ClassName.fromString(this.context.getClassInfo().getName()),
             MethodName.fromString(methodName), methodDescriptor));
@@ -77,7 +74,7 @@ class MutatingClassVisitor extends ClassVisitor {
     .withOwner(this.context.getClassInfo()).withAccess(access)
     .withMethodName(methodName).withMethodDescriptor(methodDescriptor);
 
-    if (this.filter.apply(info)) {
+    if (this.filter.test(info)) {
       return this.visitMethodForMutation(methodContext, info, methodVisitor);
     } else {
       return methodVisitor;
@@ -116,20 +113,21 @@ class MutatingClassVisitor extends ClassVisitor {
 
   private MethodVisitor wrapWithFilters(MethodMutationContext methodContext,
       final MethodVisitor wrappedMethodVisitor) {
-    return wrapWithLineFilter(methodContext,
-        wrapWithAssertFilter(methodContext, wrappedMethodVisitor));
+    return
+        wrapWithStringSwitchFilter(methodContext, wrapWithAssertFilter(methodContext, wrappedMethodVisitor));
+  }
+
+  private static MethodVisitor wrapWithStringSwitchFilter(
+    MethodMutationContext methodContext,
+    final MethodVisitor wrappedMethodVisitor) {
+  return new AvoidStringSwitchedMethodAdapter(methodContext, wrappedMethodVisitor);
+
   }
 
   private static MethodVisitor wrapWithAssertFilter(
       MethodMutationContext methodContext,
       final MethodVisitor wrappedMethodVisitor) {
     return new AvoidAssertsMethodAdapter(methodContext, wrappedMethodVisitor);
-  }
-
-  private MethodVisitor wrapWithLineFilter(MethodMutationContext methodContext,
-      final MethodVisitor wrappedMethodVisitor) {
-    return new LineFilterMethodAdapter(methodContext, this.classInfo,
-        wrappedMethodVisitor);
   }
 
 }

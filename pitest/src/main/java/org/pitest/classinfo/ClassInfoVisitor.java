@@ -22,8 +22,8 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
+import org.pitest.bytecode.ASMVersion;
 import org.pitest.bytecode.NullVisitor;
 
 public final class ClassInfoVisitor extends MethodFilteringAdapter {
@@ -73,7 +73,7 @@ public final class ClassInfoVisitor extends MethodFilteringAdapter {
       final String innerName, final int access) {
     super.visitInnerClass(name, outerName, innerName, access);
     if ((outerName != null)
-        && this.classInfo.id.getName().equals(new ClassName(name))) {
+        && this.classInfo.id.getName().equals(ClassName.fromString(name))) {
       this.classInfo.outerClass = outerName;
     }
   }
@@ -83,7 +83,7 @@ public final class ClassInfoVisitor extends MethodFilteringAdapter {
       final boolean visible) {
     final String type = desc.substring(1, desc.length() - 1);
     this.classInfo.registerAnnotation(type);
-    return new ClassAnnotationValueVisitor(this.classInfo, new ClassName(type));
+    return new ClassAnnotationValueVisitor(this.classInfo, ClassName.fromString(type));
   }
 
   @Override
@@ -101,7 +101,7 @@ public final class ClassInfoVisitor extends MethodFilteringAdapter {
 
     ClassAnnotationValueVisitor(ClassInfoBuilder classInfo,
         ClassName annotation) {
-      super(Opcodes.ASM5, null);
+      super(ASMVersion.ASM_VERSION, null);
       this.classInfo = classInfo;
       this.annotation = annotation;
     }
@@ -118,9 +118,9 @@ public final class ClassInfoVisitor extends MethodFilteringAdapter {
     @Override
     public AnnotationVisitor visitArray(String name) {
       if (name.equals("value")) {
-        final List<Object> arrayValue = new ArrayList<Object>();
+        final List<Object> arrayValue = new ArrayList<>();
 
-        return new AnnotationVisitor(Opcodes.ASM5, null) {
+        return new AnnotationVisitor(ASMVersion.ASM_VERSION, null) {
           @Override
           public void visit(String name, Object value) {
             arrayValue.add(simplify(value));
@@ -154,7 +154,7 @@ class InfoMethodVisitor extends MethodVisitor {
 
   InfoMethodVisitor(final ClassInfoBuilder classInfo,
       final MethodVisitor writer) {
-    super(Opcodes.ASM5, writer);
+    super(ASMVersion.ASM_VERSION, writer);
     this.classInfo = classInfo;
   }
 

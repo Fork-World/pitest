@@ -18,13 +18,14 @@ import java.util.Collection;
 import java.util.List;
 import java.util.logging.Logger;
 
+import org.pitest.bytecode.analysis.ClassTree;
+import org.pitest.classinfo.CachingByteArraySource;
 import org.pitest.classinfo.ClassByteArraySource;
 import org.pitest.classinfo.ClassName;
 import org.pitest.coverage.TestInfo;
 import org.pitest.mutationtest.MutationConfig;
 import org.pitest.mutationtest.engine.Mutater;
 import org.pitest.mutationtest.engine.MutationDetails;
-import org.pitest.mutationtest.filter.MutationFilter;
 import org.pitest.util.Log;
 
 public class MutationSource {
@@ -33,29 +34,41 @@ public class MutationSource {
 
   private final MutationConfig       mutationConfig;
   private final TestPrioritiser      testPrioritiser;
-  private final MutationFilter       filter;
   private final ClassByteArraySource source;
+  private final MutationInterceptor interceptor;
 
   public MutationSource(final MutationConfig mutationConfig,
-      final MutationFilter filter, final TestPrioritiser testPrioritiser,
-      final ClassByteArraySource source) {
+      final TestPrioritiser testPrioritiser,
+      final ClassByteArraySource source,
+      final MutationInterceptor interceptor) {
     this.mutationConfig = mutationConfig;
     this.testPrioritiser = testPrioritiser;
-    this.filter = filter;
-    this.source = source;
+    this.source = new CachingByteArraySource(source, 200);
+    this.interceptor = interceptor;
   }
 
   public Collection<MutationDetails> createMutations(final ClassName clazz) {
 
     final Mutater m = this.mutationConfig.createMutator(this.source);
 
-    final Collection<MutationDetails> availableMutations = this.filter.filter(m
-        .findMutations(clazz));
+    final Collection<MutationDetails> availableMutations = m
+        .findMutations(clazz);
 
-    assignTestsToMutations(availableMutations);
+    if (availableMutations.isEmpty()) {
+      return availableMutations;
+    } else {
+      final ClassTree tree = ClassTree
+          .fromBytes(this.source.getBytes(clazz.asJavaName()).get());
 
-    return availableMutations;
+      this.interceptor.begin(tree);
+      final Collection<MutationDetails> updatedMutations = this.interceptor
+          .intercept(availableMutations, m);
+      this.interceptor.end();
 
+      assignTestsToMutations(updatedMutations);
+
+      return updatedMutations;
+    }
   }
 
   private void assignTestsToMutations(

@@ -3,11 +3,14 @@ package org.pitest.maven;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -19,6 +22,7 @@ import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.scm.ChangeFile;
 import org.apache.maven.scm.ChangeSet;
+import org.apache.maven.scm.ScmBranch;
 import org.apache.maven.scm.ScmException;
 import org.apache.maven.scm.ScmFile;
 import org.apache.maven.scm.ScmFileSet;
@@ -29,10 +33,7 @@ import org.apache.maven.scm.command.status.StatusScmResult;
 import org.apache.maven.scm.manager.ScmManager;
 import org.apache.maven.scm.repository.ScmRepository;
 import org.codehaus.plexus.util.StringUtils;
-import org.pitest.functional.F;
 import org.pitest.functional.FCollection;
-import org.pitest.functional.Option;
-import org.pitest.functional.predicate.Predicate;
 import org.pitest.mutationtest.config.PluginServices;
 import org.pitest.mutationtest.config.ReportOptions;
 import org.pitest.mutationtest.tooling.CombinedStatistics;
@@ -42,8 +43,13 @@ import org.pitest.mutationtest.tooling.CombinedStatistics;
  * modified or introduced locally based on the source control configured in
  * maven.
  */
-@Mojo(name = "scmMutationCoverage", defaultPhase = LifecyclePhase.VERIFY, requiresDependencyResolution = ResolutionScope.TEST)
+@Mojo(name = "scmMutationCoverage", 
+      defaultPhase = LifecyclePhase.VERIFY, 
+      requiresDependencyResolution = ResolutionScope.TEST,
+      threadSafe = true)
 public class ScmMojo extends AbstractPitMojo {
+
+  private static final int NO_LIMIT = -1;
 
   @Component
   private ScmManager      manager;
@@ -60,8 +66,15 @@ public class ScmMojo extends AbstractPitMojo {
   /**
    * Analyze last commit. If set to true analyzes last commited change set.
    */
-  @Parameter(defaultValue = "false", property = "analyseLastCommit")
+  @Parameter(property = "analyseLastCommit", defaultValue = "false")
   private boolean analyseLastCommit;
+
+
+  @Parameter(property = "originBranch")
+  private String originBranch;
+
+  @Parameter(property = "destinationBranch", defaultValue = "master")
+  private String destinationBranch;
 
   /**
    * Connection type to use when querying scm for changed files. Can either be
@@ -80,7 +93,7 @@ public class ScmMojo extends AbstractPitMojo {
    * Base of scm root. For a multi module project this is probably the parent
    * project.
    */
-  @Parameter(property = "project.parent.basedir")
+  @Parameter(property = "scmRootDir", defaultValue = "${project.parent.basedir}")
   private File            scmRootDir;
 
   public ScmMojo(final RunPitStrategy executionStrategy,
@@ -96,64 +109,84 @@ public class ScmMojo extends AbstractPitMojo {
   }
 
   @Override
-  protected Option<CombinedStatistics> analyse() throws MojoExecutionException {
+  protected Optional<CombinedStatistics> analyse() throws MojoExecutionException {
 
-    this.targetClasses = makeConcreteList(findModifiedClassNames());
+    if (scmRootDir == null) {
+      this.scmRootDir = findScmRootDir();
+    }
 
-    if (this.targetClasses.isEmpty()) {
+    setTargetClasses(makeConcreteList(findModifiedClassNames()));
+
+    if (this.getTargetClasses().isEmpty()) {
       this.getLog().info(
           "No modified files found - nothing to mutation test, analyseLastCommit=" + this.analyseLastCommit);
-      return Option.none();
+      return Optional.empty();
     }
 
     logClassNames();
-    defaultTargetTestsToGroupNameIfNoValueSet();
+    defaultTargetTestsIfNoValueSet();
     final ReportOptions data = new MojoToReportOptionsConverter(this,
-        new SurefireConfigConverter(), filter).convert();
+        new SurefireConfigConverter(), getFilter()).convert();
     data.setFailWhenNoMutations(false);
 
-    return Option.some(this.goalStrategy.execute(detectBaseDir(), data,
-        plugins, new HashMap<String, String>()));
+    return Optional.ofNullable(this.getGoalStrategy().execute(detectBaseDir(), data,
+        getPlugins(), new HashMap<String, String>()));
 
   }
 
-  private void defaultTargetTestsToGroupNameIfNoValueSet() {
-    if (this.getTargetTests() == null) {
-      this.targetTests = makeConcreteList(Collections.singletonList(this
-          .getProject().getGroupId() + "*"));
+  private void defaultTargetTestsIfNoValueSet() {
+    if (this.getTargetTests() == null || this.getTargetTests().isEmpty()) {
+      File tests = new File(this.getProject().getBuild()
+      .getTestOutputDirectory());
+      setTargetTests(new ArrayList<>(MojoToReportOptionsConverter
+          .findOccupiedPackagesIn(tests)));
     }
   }
 
   private void logClassNames() {
-    for (final String each : this.targetClasses) {
+    for (final String each : this.getTargetClasses()) {
       this.getLog().info("Will mutate changed class " + each);
     }
   }
 
   private List<String> findModifiedClassNames() throws MojoExecutionException {
 
-    final File sourceRoot = new File(this.project.getBuild()
+    final File sourceRoot = new File(this.getProject().getBuild()
         .getSourceDirectory());
 
-    final List<String> modifiedPaths = findModifiedPaths();
+    final List<String> modifiedPaths = FCollection.map(findModifiedPaths(), pathByScmDir());
     return FCollection.flatMap(modifiedPaths, new PathToJavaClassConverter(
-        sourceRoot.getAbsolutePath()));
+            sourceRoot.getAbsolutePath()));
 
   }
 
-  private List<String> findModifiedPaths() throws MojoExecutionException {
+  private Function<String, String> pathByScmDir() {
+    return a -> scmRoot().getAbsolutePath() + "/" + a;
+  }
+
+  private File findScmRootDir() {
+    MavenProject rootProject = this.getProject();
+    while (rootProject.hasParent() && rootProject.getParent().getBasedir() != null) {
+      rootProject = rootProject.getParent();
+    }
+    return rootProject.getBasedir();
+  }
+
+  private Set<String> findModifiedPaths() throws MojoExecutionException {
     try {
-      final Set<ScmFileStatus> statusToInclude = makeStatusSet();
-      final List<String> modifiedPaths = new ArrayList<String>();
       final ScmRepository repository = this.manager
           .makeScmRepository(getSCMConnection());
       final File scmRoot = scmRoot();
       this.getLog().info("Scm root dir is " + scmRoot);
 
+      final Set<ScmFileStatus> statusToInclude = makeStatusSet();
+      final Set<String> modifiedPaths;
       if (analyseLastCommit) {
-        lastCommitChanges(statusToInclude, modifiedPaths, repository, scmRoot);
+        modifiedPaths = lastCommitChanges(statusToInclude, repository, scmRoot);
+      } else if (originBranch != null && destinationBranch != null) {
+        modifiedPaths = changesBetweenBranchs(originBranch, destinationBranch, statusToInclude, repository, scmRoot);
       } else {
-        localChanges(statusToInclude, modifiedPaths, repository, scmRoot);
+        modifiedPaths = localChanges(statusToInclude, repository, scmRoot);
       }
       return modifiedPaths;
     } catch (final ScmException e) {
@@ -162,54 +195,68 @@ public class ScmMojo extends AbstractPitMojo {
 
   }
 
-  private void lastCommitChanges(Set<ScmFileStatus> statusToInclude, List<String> modifiedPaths, ScmRepository repository, File scmRoot) throws ScmException {
+  private Set<String> lastCommitChanges(Set<ScmFileStatus> statusToInclude, ScmRepository repository, File scmRoot) throws ScmException {
     ChangeLogScmRequest scmRequest = new ChangeLogScmRequest(repository, new ScmFileSet(scmRoot));
     scmRequest.setLimit(1);
+    return pathsAffectedByChange(scmRequest, statusToInclude, 1);
+  }
 
+  private Set<String> changesBetweenBranchs(String origine, String destination, Set<ScmFileStatus> statusToInclude, ScmRepository repository, File scmRoot) throws ScmException {
+    ChangeLogScmRequest scmRequest = new ChangeLogScmRequest(repository, new ScmFileSet(scmRoot));
+    scmRequest.setScmBranch(new ScmBranch(destination + ".." + origine));
+    return pathsAffectedByChange(scmRequest, statusToInclude, NO_LIMIT);
+  }
+  
+  private Set<String> pathsAffectedByChange(ChangeLogScmRequest scmRequest, Set<ScmFileStatus> statusToInclude, int limit) throws ScmException {
+    Set<String> affected = new LinkedHashSet<>();
     ChangeLogScmResult changeLogScmResult = this.manager.changeLog(scmRequest);
     if (changeLogScmResult.isSuccess()) {
-      List<ChangeSet> changeSets = changeLogScmResult.getChangeLog().getChangeSets();
-      if (!changeSets.isEmpty()) {
-        List<ChangeFile> files = changeSets.get(0).getFiles();
-
+      List<ChangeSet> changeSets = limit(changeLogScmResult.getChangeLog().getChangeSets(),limit);
+      for (ChangeSet change : changeSets) {
+        List<ChangeFile> files = change.getFiles();
         for (final ChangeFile changeFile : files) {
           if (statusToInclude.contains(changeFile.getAction())) {
-            modifiedPaths.add(changeFile.getName());
+            affected.add(changeFile.getName());
           }
         }
       }
     }
+    return affected;
   }
 
-  private void localChanges(Set<ScmFileStatus> statusToInclude, List<String> modifiedPaths, ScmRepository repository, File scmRoot) throws ScmException {
+
+  private Set<String> localChanges(Set<ScmFileStatus> statusToInclude, ScmRepository repository, File scmRoot) throws ScmException {
     final StatusScmResult status = this.manager.status(repository,
             new ScmFileSet(scmRoot));
-
+    Set<String> affected = new LinkedHashSet<>();
     for (final ScmFile file : status.getChangedFiles()) {
       if (statusToInclude.contains(file.getStatus())) {
-        modifiedPaths.add(file.getPath());
+        affected.add(file.getPath());
       }
     }
+    return affected;
   }
+  
+  private List<ChangeSet> limit(List<ChangeSet> changeSets, int limit) {
+    if (limit < 0) {
+      return changeSets;
+    }
+    return changeSets.subList(0, limit);
+  }
+
 
   private Set<ScmFileStatus> makeStatusSet() {
     if ((this.include == null) || this.include.isEmpty()) {
-      return new HashSet<ScmFileStatus>(Arrays.asList(
+      return new HashSet<>(Arrays.asList(
           ScmStatus.ADDED.getStatus(), ScmStatus.MODIFIED.getStatus()));
     }
-    final Set<ScmFileStatus> s = new HashSet<ScmFileStatus>();
+    final Set<ScmFileStatus> s = new HashSet<>();
     FCollection.mapTo(this.include, stringToMavenScmStatus(), s);
     return s;
   }
 
-  private static F<String, ScmFileStatus> stringToMavenScmStatus() {
-    return new F<String, ScmFileStatus>() {
-      @Override
-      public ScmFileStatus apply(final String a) {
-        return ScmStatus.valueOf(a.toUpperCase()).getStatus();
-      }
-
-    };
+  private static Function<String, ScmFileStatus> stringToMavenScmStatus() {
+    return a -> ScmStatus.valueOf(a.toUpperCase()).getStatus();
   }
 
   private File scmRoot() {
@@ -221,17 +268,17 @@ public class ScmMojo extends AbstractPitMojo {
 
   private String getSCMConnection() throws MojoExecutionException {
 
-    if (this.project.getScm() == null) {
+    if (this.getProject().getScm() == null) {
       throw new MojoExecutionException("No SCM Connection configured.");
     }
 
-    final String scmConnection = this.project.getScm().getConnection();
+    final String scmConnection = this.getProject().getScm().getConnection();
     if ("connection".equalsIgnoreCase(this.connectionType)
         && StringUtils.isNotEmpty(scmConnection)) {
       return scmConnection;
     }
 
-    final String scmDeveloper = this.project.getScm().getDeveloperConnection();
+    final String scmDeveloper = this.getProject().getScm().getDeveloperConnection();
     if ("developerconnection".equalsIgnoreCase(this.connectionType)
         && StringUtils.isNotEmpty(scmDeveloper)) {
       return scmDeveloper;
@@ -253,7 +300,7 @@ public class ScmMojo extends AbstractPitMojo {
    * A bug in maven 2 requires that all list fields declare a concrete list type
    */
   private static ArrayList<String> makeConcreteList(List<String> list) {
-    return new ArrayList<String>(list);
+    return new ArrayList<>(list);
   }
 
 }

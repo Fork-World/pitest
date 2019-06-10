@@ -6,9 +6,9 @@ import org.junit.Test;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.pitest.bytecode.ASMVersion;
 import org.pitest.classinfo.ClassByteArraySource;
 import org.pitest.classinfo.ClassName;
 import org.pitest.classpath.ClassloaderByteArraySource;
@@ -83,7 +83,7 @@ public class InstructionTrackingMethodVisitorTest {
   private InstructionTrackingMethodVisitor analyse(final Class<?> clazz,
       final String targetMethod) {
     final ClassReader reader = new ClassReader(this.byteSource.getBytes(
-        clazz.getName()).value());
+        clazz.getName()).get());
     final Analyser cv = new Analyser(targetMethod);
     reader.accept(cv, 0);
     return cv.testee;
@@ -91,11 +91,11 @@ public class InstructionTrackingMethodVisitorTest {
 
   private MethodNode makeTree(final Class<?> clazz, final String name) {
     final ClassReader reader = new ClassReader(this.byteSource.getBytes(
-        ClassName.fromClass(clazz).asJavaName()).value());
+        ClassName.fromClass(clazz).asJavaName()).get());
     final ClassNode tree = new ClassNode();
     reader.accept(tree, 0);
-    for (Object m : tree.methods) {
-      MethodNode mn = (MethodNode) m;
+    for (final Object m : tree.methods) {
+      final MethodNode mn = (MethodNode) m;
       if (mn.name.equals(name)) {
         return mn;
       }
@@ -108,7 +108,7 @@ public class InstructionTrackingMethodVisitorTest {
     InstructionTrackingMethodVisitor testee;
 
     public Analyser(final String targetMethod) {
-      super(Opcodes.ASM4);
+      super(ASMVersion.ASM_VERSION);
       this.targetMethod = targetMethod;
     }
 

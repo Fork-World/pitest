@@ -21,6 +21,11 @@ import org.pitest.mutationtest.build.PercentAndConstantTimeoutStrategy;
 public enum ConfigOption {
 
   /**
+   * The test plugin to use
+   */
+  TEST_PLUGIN("testPlugin"),
+
+  /**
    * The directory to write report sot
    */
   REPORT_DIR("reportDir"),
@@ -39,6 +44,10 @@ public enum ConfigOption {
    */
   MUTATIONS("mutators"),
   /**
+   * Features to enable/disable
+   */
+  FEATURES("features"),
+  /**
    * Maximum number of hops from a mutable class to a test
    */
   DEPENDENCY_DISTANCE("dependencyDistance", -1),
@@ -46,11 +55,7 @@ public enum ConfigOption {
    * Arguments to launch child processes with
    */
   CHILD_JVM("jvmArgs"),
-  /**
-   * Do/don't mutate static initializers (slow as new ClassLoader required for
-   * each mutant)
-   */
-  MUTATE_STATIC_INITIALIZERS("mutateStaticInits", false),
+
 
   /**
    * Do/don't create timestamped folders for reports
@@ -94,9 +99,14 @@ public enum ConfigOption {
    */
   VERBOSE("verbose", false),
   /**
-   * Filter defining classes to exclude (both tests and mutees)
+   * Filter defining classes to exclude from mutation
    */
   EXCLUDED_CLASSES("excludedClasses"),
+
+  /**
+   * Filter defining test classes to excludd
+   */
+  EXCLUDED_TEST_CLASSES("excludedTestClasses"),
   /**
    * Formats in which to output results
    */
@@ -127,9 +137,19 @@ public enum ConfigOption {
    */
   INCLUDED_GROUPS("includedGroups"),
   /**
+   * Test methods that should be included for challenging the mutants
+   */
+  INCLUDED_TEST_METHODS("includedTestMethods"),
+  /**
    * TestNG groupsJUnit categories to exclude
    */
   EXCLUDED_GROUPS("excludedGroups"),
+
+  /**
+   * Whether to compute a full mutation matrix.
+   */
+  FULL_MUTATION_MATRIX("fullMutationMatrix", false),
+
   /**
    * Maximum number of mutations to include within a single unit of analysis.
    */
@@ -188,7 +208,14 @@ public enum ConfigOption {
   /**
    * Custom properties for plugins
    */
-  PLUGIN_CONFIGURATION("pluginConfiguration");
+  PLUGIN_CONFIGURATION("pluginConfiguration"),
+  
+  /**
+   * Communicate classpath using a temporary jar with a classpath manifest.
+   * Allows very long classpaths that would otherwise exceed OS limits, but
+   * may cause problems with some third party libraries.
+   */
+  USE_CLASSPATH_JAR("useClasspathJar", false);
 
   private final String       text;
   private final Serializable defaultValue;

@@ -6,9 +6,9 @@ import java.util.LinkedList;
 import java.util.List;
 
 import org.codehaus.plexus.util.xml.Xpp3Dom;
-import org.pitest.functional.F;
+import java.util.function.Function;
 import org.pitest.functional.FCollection;
-import org.pitest.functional.predicate.Predicate;
+import java.util.function.Predicate;
 import org.pitest.mutationtest.config.ReportOptions;
 import org.pitest.testapi.TestGroupConfig;
 import org.pitest.util.Glob;
@@ -24,6 +24,7 @@ public class SurefireConfigConverter {
     }
     convertExcludes(option, configuration);
     convertGroups(option, configuration);
+    convertTestFailureIgnore(option, configuration);
     return option;
   }
 
@@ -52,12 +53,12 @@ public class SurefireConfigConverter {
   private void convertExcludes(ReportOptions option, Xpp3Dom configuration) {
     List<Predicate<String>> excludes = FCollection.map(
         extract("excludes", configuration), filenameToClassFilter());
-    excludes.addAll(option.getExcludedClasses());
-    option.setExcludedClasses(excludes);
+    excludes.addAll(option.getExcludedTestClasses());
+    option.setExcludedTestClasses(excludes);
   }
 
-  private F<String, Predicate<String>> filenameToClassFilter() {
-    return new F<String, Predicate<String>>() {
+  private Function<String, Predicate<String>> filenameToClassFilter() {
+    return new Function<String, Predicate<String>>() {
       @Override
       public Predicate<String> apply(String a) {
         return new Glob(a.replace(".java", "").replace("/", "."));
@@ -68,7 +69,7 @@ public class SurefireConfigConverter {
   private List<String> extract(String childname, Xpp3Dom config) {
     final Xpp3Dom subelement = config.getChild(childname);
     if (subelement != null) {
-      List<String> result = new LinkedList<String>();
+      List<String> result = new LinkedList<>();
       final Xpp3Dom[] children = subelement.getChildren();
       for (Xpp3Dom child : children) {
         result.add(child.getValue());
@@ -79,4 +80,10 @@ public class SurefireConfigConverter {
     return Collections.emptyList();
   }
 
+  private void convertTestFailureIgnore(ReportOptions option, Xpp3Dom configuration) {
+    Xpp3Dom testFailureIgnore = configuration.getChild("testFailureIgnore");
+    if (testFailureIgnore != null) {
+      option.setSkipFailingTests(Boolean.parseBoolean(testFailureIgnore.getValue()));
+    }
+  }
 }

@@ -10,7 +10,7 @@ import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
 
-import org.pitest.functional.Option;
+import java.util.Optional;
 
 /*
  * Copyright 2010 Henry Coles
@@ -26,7 +26,7 @@ import org.pitest.functional.Option;
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and limitations under the License.
  */
-public class DirectoryClassPathRoot implements ClassPathRoot {
+public class DirectoryClassPathRoot implements ClassPathRoot, IOHeavyRoot {
 
   private final File root;
 
@@ -63,7 +63,7 @@ public class DirectoryClassPathRoot implements ClassPathRoot {
   }
 
   private Collection<String> classNames(final File file) {
-    final List<String> classNames = new LinkedList<String>();
+    final List<String> classNames = new LinkedList<>();
     for (final File f : file.listFiles()) {
       if (f.isDirectory()) {
         classNames.addAll(classNames(f));
@@ -83,8 +83,8 @@ public class DirectoryClassPathRoot implements ClassPathRoot {
   }
 
   @Override
-  public Option<String> cacheLocation() {
-    return Option.some(this.root.getAbsolutePath());
+  public Optional<String> cacheLocation() {
+    return Optional.ofNullable(this.root.getAbsolutePath());
   }
 
 }

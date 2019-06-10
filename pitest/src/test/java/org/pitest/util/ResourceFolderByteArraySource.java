@@ -9,19 +9,19 @@ import java.util.Collection;
 import org.pitest.classinfo.ClassByteArraySource;
 import org.pitest.classpath.ClassPath;
 import org.pitest.classpath.ClassPathRoot;
-import org.pitest.functional.Option;
+import java.util.Optional;
 
 public class ResourceFolderByteArraySource implements ClassByteArraySource {
 
+
   @Override
-  public Option<byte[]> getBytes(final String classname) {
+  public Optional<byte[]> getBytes(final String classname) {
     final ClassPath cp = new ClassPath(new ResourceFolderClassPathroot());
     try {
-      return Option.some(cp.getClassData(classname));
+      return Optional.ofNullable(cp.getClassData(classname));
     } catch (final IOException ex) {
       throw Unchecked.translateCheckedException(ex);
     }
-
   }
 
 }
@@ -34,7 +34,7 @@ class ResourceFolderClassPathroot implements ClassPathRoot {
   }
 
   @Override
-  public InputStream getData(final String name) throws IOException {
+  public InputStream getData(String name) throws IOException {
     final String path = "sampleClasses/" + name.replace(".", "/")
         + ".class.bin";
     return IsolationUtils.getContextClassLoader().getResourceAsStream(path);
@@ -46,7 +46,7 @@ class ResourceFolderClassPathroot implements ClassPathRoot {
   }
 
   @Override
-  public Option<String> cacheLocation() {
+  public Optional<String> cacheLocation() {
     return null;
   }
 

@@ -25,15 +25,15 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.logging.Level;
 
 import org.antlr.stringtemplate.StringTemplate;
 import org.antlr.stringtemplate.StringTemplateGroup;
 import org.pitest.classinfo.ClassInfo;
 import org.pitest.coverage.CoverageDatabase;
-import org.pitest.functional.F;
 import org.pitest.functional.FCollection;
-import org.pitest.functional.Option;
+import java.util.Optional;
 import org.pitest.mutationtest.ClassMutationResults;
 import org.pitest.mutationtest.MutationResultListener;
 import org.pitest.mutationtest.SourceLocator;
@@ -59,8 +59,8 @@ public class MutationHtmlReportListener implements MutationResultListener {
       Collection<String> mutatorNames, final SourceLocator... locators) {
     this.coverage = coverage;
     this.outputStrategy = outputStrategy;
-    this.sourceRoots = new HashSet<SourceLocator>(Arrays.asList(locators));
-    this.mutatorNames = new HashSet<String>(mutatorNames);
+    this.sourceRoots = new HashSet<>(Arrays.asList(locators));
+    this.mutatorNames = new HashSet<>(mutatorNames);
     this.css = loadCss();
   }
 
@@ -68,7 +68,7 @@ public class MutationHtmlReportListener implements MutationResultListener {
     try {
       return FileUtil.readToString(IsolationUtils.getContextClassLoader()
           .getResourceAsStream("templates/mutation/style.css"));
-    } catch (IOException e) {
+    } catch (final IOException e) {
       Log.getLogger().log(Level.SEVERE, "Error while loading css", e);
     }
     return "";
@@ -76,12 +76,12 @@ public class MutationHtmlReportListener implements MutationResultListener {
 
   private void generateAnnotatedSourceFile(
       final MutationTestSummaryData mutationMetaData) {
-    try {
 
-      final String fileName = mutationMetaData.getPackageName()
-          + File.separator + mutationMetaData.getFileName() + ".html";
 
-      final Writer writer = this.outputStrategy.createWriterForFile(fileName);
+    final String fileName = mutationMetaData.getPackageName()
+        + File.separator + mutationMetaData.getFileName() + ".html";
+
+    try (Writer writer = this.outputStrategy.createWriterForFile(fileName)) {
 
       final StringTemplateGroup group = new StringTemplateGroup("mutation_test");
       final StringTemplate st = group
@@ -98,7 +98,7 @@ public class MutationHtmlReportListener implements MutationResultListener {
       st.setAttribute("mutatedClasses", mutationMetaData.getMutatedClasses());
 
       writer.write(st.toString());
-      writer.close();
+
 
     } catch (final IOException ex) {
       Log.getLogger().log(Level.WARNING, "Error while writing report", ex);
@@ -142,12 +142,12 @@ public class MutationHtmlReportListener implements MutationResultListener {
           throws IOException {
     final Collection<ClassInfo> classes = this.coverage.getClassesForFile(
         sourceFile, packageName);
-    final Option<Reader> reader = findSourceFile(classInfoToNames(classes),
+    final Optional<Reader> reader = findSourceFile(classInfoToNames(classes),
         sourceFile);
-    if (reader.hasSome()) {
+    if (reader.isPresent()) {
       final AnnotatedLineFactory alf = new AnnotatedLineFactory(
-          mutationsForThisFile, this.coverage, classes);
-      return alf.convert(reader.value());
+          mutationsForThisFile.list(), this.coverage, classes);
+      return alf.convert(reader.get());
     }
     return Collections.emptyList();
   }
@@ -157,30 +157,34 @@ public class MutationHtmlReportListener implements MutationResultListener {
     return FCollection.map(classes, classInfoToJavaName());
   }
 
-  private F<ClassInfo, String> classInfoToJavaName() {
-    return new F<ClassInfo, String>() {
-
-      @Override
-      public String apply(final ClassInfo a) {
-        return a.getName().asJavaName();
-      }
-
-    };
+  private Function<ClassInfo, String> classInfoToJavaName() {
+    return a -> a.getName().asJavaName();
   }
 
-  private Option<Reader> findSourceFile(final Collection<String> classes,
+  private Optional<Reader> findSourceFile(final Collection<String> classes,
       final String fileName) {
     for (final SourceLocator each : this.sourceRoots) {
-      final Option<Reader> maybe = each.locate(classes, fileName);
-      if (maybe.hasSome()) {
+      final Optional<Reader> maybe = each.locate(classes, fileName);
+      if (maybe.isPresent()) {
         return maybe;
       }
     }
-    return Option.none();
+    return Optional.empty();
   }
 
   public void onRunEnd() {
     createIndexPages();
+    createCssFile();
+  }
+
+  private void createCssFile() {
+    final Writer cssWriter = this.outputStrategy.createWriterForFile("style.css");
+    try {
+      cssWriter.write(this.css);
+      cssWriter.close();
+    } catch (final IOException e) {
+      e.printStackTrace();
+    }
   }
 
   private void createIndexPages() {
@@ -192,7 +196,7 @@ public class MutationHtmlReportListener implements MutationResultListener {
     final Writer writer = this.outputStrategy.createWriterForFile("index.html");
     final MutationTotals totals = new MutationTotals();
 
-    final List<PackageSummaryData> psd = new ArrayList<PackageSummaryData>(
+    final List<PackageSummaryData> psd = new ArrayList<>(
         this.packageSummaryData.values());
     Collections.sort(psd);
     for (final PackageSummaryData psData : psd) {
@@ -237,6 +241,7 @@ public class MutationHtmlReportListener implements MutationResultListener {
   @Override
   public void runEnd() {
     createIndexPages();
+    createCssFile();
   }
 
   @Override

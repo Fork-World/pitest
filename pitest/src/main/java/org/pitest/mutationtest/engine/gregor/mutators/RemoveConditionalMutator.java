@@ -6,6 +6,7 @@ import java.util.List;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
+import org.pitest.bytecode.ASMVersion;
 import org.pitest.mutationtest.engine.MutationIdentifier;
 import org.pitest.mutationtest.engine.gregor.MethodInfo;
 import org.pitest.mutationtest.engine.gregor.MethodMutatorFactory;
@@ -39,7 +40,7 @@ public class RemoveConditionalMutator implements MethodMutatorFactory {
   }
 
   public static Iterable<MethodMutatorFactory> makeMutators() {
-    final List<MethodMutatorFactory> variations = new ArrayList<MethodMutatorFactory>();
+    final List<MethodMutatorFactory> variations = new ArrayList<>();
     final Choice[] allChoices = { Choice.EQUAL, Choice.ORDER };
     final boolean[] arrWith = { true, false };
     for (final Choice c : allChoices) {
@@ -79,7 +80,7 @@ public class RemoveConditionalMutator implements MethodMutatorFactory {
     RemoveConditionalMethodVisitor(final MethodMutatorFactory factory,
         final MutationContext context,
         final MethodVisitor delegateMethodVisitor, String description) {
-      super(Opcodes.ASM5, delegateMethodVisitor);
+      super(ASMVersion.ASM_VERSION, delegateMethodVisitor);
       this.context = context;
       this.factory = factory;
       this.description = description;

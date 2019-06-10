@@ -39,7 +39,7 @@ public class DirectoriesOnlyWalker extends DirectoryWalker {
     }
     
     public List<File> locateDirectories(File startDir) {
-        List<File> foundDirs = new LinkedList<File>();
+        List<File> foundDirs = new LinkedList<>();
         
         try {
           this.walk(startDir, foundDirs);
@@ -50,7 +50,6 @@ public class DirectoriesOnlyWalker extends DirectoryWalker {
       return foundDirs;
     }
 
-    @SuppressWarnings({ "unchecked", "rawtypes" })
     @Override
     protected boolean handleDirectory(File directory, int depth, Collection results) throws IOException {
         results.add(directory);

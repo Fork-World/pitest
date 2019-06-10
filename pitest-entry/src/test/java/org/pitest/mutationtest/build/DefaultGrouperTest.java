@@ -32,7 +32,7 @@ public class DefaultGrouperTest {
   public void shouldCreateMultipleTestUnitsWhenUnitSizeIsLessThanNumberOfMutations() {
     makeTesteeWithUnitSizeOf(1);
     final List<List<MutationDetails>> actual = this.testee.groupMutations(
-        Arrays.asList(new ClassName("foo")), Arrays.asList(
+        Arrays.asList(ClassName.fromString("foo")), Arrays.asList(
             createDetails("foo"), createDetails("foo"), createDetails("foo")));
 
     assertEquals(3, actual.size());
@@ -51,7 +51,7 @@ public class DefaultGrouperTest {
   }
 
   public static MutationDetails createDetails(final String clazz) {
-    LocationBuilder lb = LocationMother.aLocation().withClass(
+    final LocationBuilder lb = LocationMother.aLocation().withClass(
         ClassName.fromString(clazz));
     return new MutationDetails(aMutationId().withLocation(lb).build(), "",
         "desc", 42, 0);

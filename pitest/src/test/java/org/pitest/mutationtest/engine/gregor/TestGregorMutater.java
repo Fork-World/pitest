@@ -14,23 +14,17 @@
  */
 package org.pitest.mutationtest.engine.gregor;
 
-import static org.hamcrest.core.Is.is;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.function.Predicate;
 
-import org.hamcrest.Description;
-import org.hamcrest.Matcher;
-import org.hamcrest.TypeSafeMatcher;
 import org.junit.Test;
-import org.pitest.functional.F;
 import org.pitest.functional.FCollection;
-import org.pitest.functional.FunctionalList;
-import org.pitest.functional.predicate.True;
 import org.pitest.mutationtest.engine.MutationDetails;
 import org.pitest.mutationtest.engine.gregor.config.Mutator;
 import org.pitest.mutationtest.engine.gregor.mutators.IncrementsMutator;
@@ -61,17 +55,16 @@ public class TestGregorMutater extends MutatorTestBase {
         InvertNegsMutator.INVERT_NEGS_MUTATOR,
         IncrementsMutator.INCREMENTS_MUTATOR);
 
-    final FunctionalList<MutationDetails> actualDetails = findMutationsFor(HasMultipleMutations.class);
+    final List<MutationDetails> actualDetails = findMutationsFor(HasMultipleMutations.class);
 
-    assertTrue(actualDetails
-        .contains(descriptionContaining("Replaced Shift Left with Shift Right")));
-    assertTrue(actualDetails
-        .contains(descriptionContaining("replaced return of integer")));
-    assertTrue(actualDetails
-        .contains(descriptionContaining("Changed increment")));
-    assertTrue(actualDetails
-        .contains(descriptionContaining("removed negation")));
-
+    assertTrue(actualDetails.stream()
+        .filter(descriptionContaining("Replaced Shift Left with Shift Right")).findFirst().isPresent());
+    assertTrue(actualDetails.stream()
+        .filter(descriptionContaining("replaced return of integer")).findFirst().isPresent());    
+    assertTrue(actualDetails.stream()
+        .filter(descriptionContaining("Changed increment")).findFirst().isPresent());  
+    assertTrue(actualDetails.stream()
+        .filter(descriptionContaining("removed negation")).findFirst().isPresent());  
   }
 
   @Test
@@ -88,7 +81,7 @@ public class TestGregorMutater extends MutatorTestBase {
       }
     }
     createTesteeWith();
-    final FunctionalList<MutationDetails> actualDetails = findMutationsFor(VeryMutable.class);
+    final List<MutationDetails> actualDetails = findMutationsFor(VeryMutable.class);
     assertTrue(actualDetails.isEmpty());
 
   }
@@ -119,23 +112,10 @@ public class TestGregorMutater extends MutatorTestBase {
   public void shouldMutateCustomConstructorsAddedToEnums() {
     createTesteeWith(Mutator.all());
     final Collection<MutationDetails> actualDetails = findMutationsFor(EnumWithCustomConstructor.class);
-    assertThat(actualDetails, is(aNonEmptyCollection()));
+    assertThat(actualDetails).isNotEmpty();
   }
 
-  private static Matcher<Collection<?>> aNonEmptyCollection() {
-    return new TypeSafeMatcher<Collection<?>>() {
 
-      @Override
-      public void describeTo(final Description description) {
-        description.appendText("a non empty collection");
-      }
-
-      @Override
-      public boolean matchesSafely(final Collection<?> item) {
-        return !item.isEmpty();
-      }
-    };
-  }
 
   public static class HasAssertStatement {
     public void foo(final int i) {
@@ -171,7 +151,7 @@ public class TestGregorMutater extends MutatorTestBase {
   @Test
   public void shouldNotMutateGroovyClasses() {
     createTesteeWith(new ResourceFolderByteArraySource(),
-        True.<MethodInfo> all(), Mutator.all());
+        i -> true, Mutator.all());
     final Collection<MutationDetails> actualDetails = findMutationsFor("groovy/SomeGroovyCode");
     assertTrue(actualDetails.isEmpty());
   }
@@ -179,7 +159,7 @@ public class TestGregorMutater extends MutatorTestBase {
   @Test
   public void shouldNotMutateGroovyClosures() {
     createTesteeWith(new ResourceFolderByteArraySource(),
-        True.<MethodInfo> all(), Mutator.all());
+        i -> true, Mutator.all());
     final Collection<MutationDetails> actualDetails = findMutationsFor("groovy/SomeGroovyCode$_mapToString_closure2");
     assertTrue(actualDetails.isEmpty());
   }
@@ -367,14 +347,17 @@ public class TestGregorMutater extends MutatorTestBase {
                                                                     // target?
   }
 
-  private static F<MutationDetails, Boolean> isInFinallyBlock() {
-    return new F<MutationDetails, Boolean>() {
-      @Override
-      public Boolean apply(final MutationDetails a) {
-        return a.isInFinallyBlock();
-      }
+  @Test
+  public void shouldNotMutateCompilerGeneratedConditionalsInStringSwitch() {
+    createTesteeWith(new ResourceFolderByteArraySource(),
+        i -> true, Mutator.byName("REMOVE_CONDITIONALS"));
+    final Collection<MutationDetails> actualDetails = findMutationsFor("Java7SwitchOnString");
+    assertThat(actualDetails).isEmpty();
+  }
 
-    };
+
+  private static Predicate<MutationDetails> isInFinallyBlock() {
+    return a -> a.isInFinallyBlock();
   }
 
   private void assertTwoMutationsInDifferentBlocks(

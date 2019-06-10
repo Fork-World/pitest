@@ -16,7 +16,7 @@ package org.pitest.dependency;
 
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Opcodes;
+import org.pitest.bytecode.ASMVersion;
 import org.pitest.dependency.DependencyAccess.Member;
 import org.pitest.functional.SideEffect1;
 
@@ -27,19 +27,15 @@ class DependencyClassVisitor extends ClassVisitor {
 
   protected DependencyClassVisitor(final ClassVisitor visitor,
       final SideEffect1<DependencyAccess> typeReceiver) {
-    super(Opcodes.ASM5, visitor);
+    super(ASMVersion.ASM_VERSION, visitor);
     this.typeReceiver = filterOutJavaLangObject(typeReceiver);
   }
 
   private SideEffect1<DependencyAccess> filterOutJavaLangObject(
       final SideEffect1<DependencyAccess> child) {
-    return new SideEffect1<DependencyAccess>() {
-      @Override
-      public void apply(final DependencyAccess a) {
-        if (!a.getDest().getOwner().equals("java/lang/Object")) {
-          child.apply(a);
-        }
-
+    return a -> {
+      if (!a.getDest().getOwner().equals("java/lang/Object")) {
+        child.apply(a);
       }
 
     };
@@ -70,7 +66,7 @@ class DependencyClassVisitor extends ClassVisitor {
     DependencyAnalysisMethodVisitor(final Member member,
         final MethodVisitor methodVisitor,
         final SideEffect1<DependencyAccess> typeReceiver) {
-      super(Opcodes.ASM5, methodVisitor);
+      super(ASMVersion.ASM_VERSION, methodVisitor);
       this.typeReceiver = typeReceiver;
       this.member = member;
     }

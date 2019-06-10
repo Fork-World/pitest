@@ -14,7 +14,8 @@
  */
 package org.pitest.mutationtest;
 
-import org.pitest.functional.Option;
+import java.util.List;
+import java.util.Optional;
 import org.pitest.mutationtest.engine.MutationDetails;
 
 public final class MutationResult {
@@ -32,8 +33,16 @@ public final class MutationResult {
     return this.details;
   }
 
-  public Option<String> getKillingTest() {
+  public Optional<String> getKillingTest() {
     return this.status.getKillingTest();
+  }
+
+  public List<String> getKillingTests() {
+    return this.status.getKillingTests();
+  }
+
+  public List<String> getSucceedingTests() {
+    return this.status.getSucceedingTests();
   }
 
   public DetectionStatus getStatus() {
@@ -53,7 +62,7 @@ public final class MutationResult {
   }
 
   public String getKillingTestDescription() {
-    return getKillingTest().getOrElse("none");
+    return getKillingTest().orElse("none");
   }
 
   @Override

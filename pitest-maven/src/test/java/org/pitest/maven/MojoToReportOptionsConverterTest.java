@@ -22,7 +22,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -33,10 +35,10 @@ import org.apache.maven.artifact.DependencyResolutionRequiredException;
 import org.apache.maven.model.Build;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
+import org.apache.maven.model.Repository;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.mockito.Mockito;
-import org.pitest.functional.predicate.Predicate;
-import org.pitest.functional.prelude.Prelude;
+import java.util.function.Predicate;
 import org.pitest.mutationtest.config.ConfigOption;
 import org.pitest.mutationtest.config.ReportOptions;
 import org.pitest.util.Unchecked;
@@ -73,9 +75,9 @@ public class MojoToReportOptionsConverterTest extends BasePitMojoTest {
 
     final ReportOptions actual = parseConfig(xml);
     final Predicate<String> actualPredicate = actual.getTargetClassesFilter();
-    assertTrue(actualPredicate.apply("foo_anything"));
-    assertTrue(actualPredicate.apply("bar_anything"));
-    assertFalse(actualPredicate.apply("notfoobar"));
+    assertTrue(actualPredicate.test("foo_anything"));
+    assertTrue(actualPredicate.test("bar_anything"));
+    assertFalse(actualPredicate.test("notfoobar"));
   }
 
   public void testUsesSourceDirectoriesFromProject() {
@@ -104,7 +106,13 @@ public class MojoToReportOptionsConverterTest extends BasePitMojoTest {
         "                      <param>bar</param>" + //
         "                  </jvmArgs>";
     final ReportOptions actual = parseConfig(xml);
-    assertEquals(Arrays.asList("foo", "bar"), actual.getJvmArgs());
+
+    List<String> expectedArgs = new ArrayList<>();
+    expectedArgs.addAll(ReportOptions.DEFAULT_CHILD_JVM_ARGS);
+    expectedArgs.add("foo");
+    expectedArgs.add("bar");
+
+    assertEquals(expectedArgs, actual.getJvmArgs());
   }
 
   public void testParsesListOfMutationOperators() {
@@ -115,15 +123,16 @@ public class MojoToReportOptionsConverterTest extends BasePitMojoTest {
     final ReportOptions actual = parseConfig(xml);
     assertEquals(Arrays.asList("foo", "bar"), actual.getMutators());
   }
-
-  public void testParsersMutateStaticInitializersFlag() {
-    assertTrue(parseConfig(
-        "<mutateStaticInitializers>true</mutateStaticInitializers>")
-        .isMutateStaticInitializers());
-    assertFalse(parseConfig(
-        "<mutateStaticInitializers>false</mutateStaticInitializers>")
-        .isMutateStaticInitializers());
+  
+  public void testParsesListOfFeatures() {
+    final String xml = "<features>" + //
+        "                      <param>+FOO</param>" + //
+        "                      <param>-BAR(foo[1] bar[3])</param>" + //
+        "               </features>";
+    final ReportOptions actual = parseConfig(xml);
+    assertThat(actual.getFeatures()).contains("+FOO", "-BAR(foo[1] bar[3])");
   }
+
 
   public void testParsesNumberOfThreads() {
     final ReportOptions actual = parseConfig("<threads>42</threads>");
@@ -147,23 +156,23 @@ public class MojoToReportOptionsConverterTest extends BasePitMojoTest {
         "                  </targetTests>";
     final ReportOptions actual = parseConfig(xml);
     final Predicate<String> actualPredicate = actual.getTargetTestsFilter();
-    assertTrue(actualPredicate.apply("foo_anything"));
-    assertTrue(actualPredicate.apply("bar_anything"));
-    assertFalse(actualPredicate.apply("notfoobar"));
+    assertTrue(actualPredicate.test("foo_anything"));
+    assertTrue(actualPredicate.test("bar_anything"));
+    assertFalse(actualPredicate.test("notfoobar"));
   }
 
-  public void testParsesListOfExcludedClassGlobsAndApplyTheseToTests() {
-    final String xml = "<excludedClasses>" + //
+  public void testParsesListOfExcludedTestClassGlobs() {
+    final String xml = "<excludedTestClasses>" + //
         "                      <param>foo*</param>" + //
-        "                  </excludedClasses>" + //
+        "                  </excludedTestClasses>" + //
         "                  <targetTests>" + //
         "                      <param>foo*</param>" + //
         "                      <param>bar*</param>" + //
         "                  </targetTests>";
     final ReportOptions actual = parseConfig(xml);
     final Predicate<String> testPredicate = actual.getTargetTestsFilter();
-    assertFalse(testPredicate.apply("foo_anything"));
-    assertTrue(testPredicate.apply("bar_anything"));
+    assertFalse(testPredicate.test("foo_anything"));
+    assertTrue(testPredicate.test("bar_anything"));
   }
 
   public void testParsesListOfExcludedClassGlobsAndApplyTheseToTargets() {
@@ -176,8 +185,8 @@ public class MojoToReportOptionsConverterTest extends BasePitMojoTest {
         "                  </targetClasses>";
     final ReportOptions actual = parseConfig(xml);
     final Predicate<String> targetPredicate = actual.getTargetClassesFilter();
-    assertFalse(targetPredicate.apply("foo_anything"));
-    assertTrue(targetPredicate.apply("bar_anything"));
+    assertFalse(targetPredicate.test("foo_anything"));
+    assertTrue(targetPredicate.test("bar_anything"));
   }
 
   public void testDefaultsLoggingPackagesToDefaultsDefinedByDefaultMutationConfigFactory() {
@@ -202,13 +211,9 @@ public class MojoToReportOptionsConverterTest extends BasePitMojoTest {
         "                      <param>bar*</param>" + //
         "                      <param>car</param>" + //
         "                  </excludedMethods>";
-    final ReportOptions actual = parseConfig(xml);
-    final Predicate<String> actualPredicate = Prelude.or(actual
-        .getExcludedMethods());
-    assertTrue(actualPredicate.apply("foox"));
-    assertTrue(actualPredicate.apply("barx"));
-    assertTrue(actualPredicate.apply("car"));
-    assertFalse(actualPredicate.apply("carx"));
+    final ReportOptions options = parseConfig(xml);
+    final Collection<String> actual = options.getExcludedMethods();
+    assertThat(actual).containsExactlyInAnyOrder("foo*", "bar*", "car");
   }
 
   public void testParsesVerboseFlag() {
@@ -225,7 +230,7 @@ public class MojoToReportOptionsConverterTest extends BasePitMojoTest {
 
   public void testDefaultsToHtmlReportWhenNoOutputFormatsSpecified() {
     final ReportOptions actual = parseConfig("");
-    assertEquals(new HashSet<String>(Arrays.asList("HTML")),
+    assertEquals(new HashSet<>(Arrays.asList("HTML")),
         actual.getOutputFormats());
   }
 
@@ -235,7 +240,7 @@ public class MojoToReportOptionsConverterTest extends BasePitMojoTest {
         "                      <param>CSV</param>" + //
         "                  </outputFormats>";
     final ReportOptions actual = parseConfig(xml);
-    assertEquals(new HashSet<String>(Arrays.asList("HTML", "CSV")),
+    assertEquals(new HashSet<>(Arrays.asList("HTML", "CSV")),
         actual.getOutputFormats());
   }
 
@@ -246,6 +251,14 @@ public class MojoToReportOptionsConverterTest extends BasePitMojoTest {
     assertFalse(parseConfig("<failWhenNoMutations>false</failWhenNoMutations>")
         .shouldFailWhenNoMutations());
   }
+
+  public void testObeysSkipFailingTestsFlagWhenPackagingTypeIsNotPOM() {
+	    when(this.project.getModel()).thenReturn(new Model());
+	    assertTrue(parseConfig("<skipFailingTests>true</skipFailingTests>")
+	        .skipFailingTests());
+	    assertFalse(parseConfig("<skipFailingTests>false</skipFailingTests>")
+	        .skipFailingTests());
+	  }
 
   public void testParsesTestGroupsToExclude() {
     final ReportOptions actual = parseConfig("<excludedGroups><value>foo</value><value>bar</value></excludedGroups>");
@@ -259,9 +272,20 @@ public class MojoToReportOptionsConverterTest extends BasePitMojoTest {
         .getIncludedGroups());
   }
 
+  public void testParsesTestMethodsToInclude() {
+    final ReportOptions actual = parseConfig("<includedTestMethods><value>foo</value><value>bar</value></includedTestMethods>");
+    assertEquals(Arrays.asList("foo", "bar"), actual
+            .getIncludedTestMethods());
+  }
+
   public void testMaintainsOrderOfClassPath() {
     final ReportOptions actual = parseConfig("<includedGroups><value>foo</value><value>bar</value></includedGroups>");
     assertEquals(this.classPath, actual.getClassPathElements());
+  }
+
+  public void testParsesFullMutationMatrix() {
+    final ReportOptions actual = parseConfig("<fullMutationMatrix>true</fullMutationMatrix>");
+    assertEquals(true, actual.isFullMutationMatrix());
   }
 
   public void testParsesMutationUnitSize() {
@@ -329,7 +353,7 @@ public class MojoToReportOptionsConverterTest extends BasePitMojoTest {
       throws DependencyResolutionRequiredException {
     final String sep = File.pathSeparator;
 
-    final Set<Artifact> artifacts = new HashSet<Artifact>();
+    final Set<Artifact> artifacts = new HashSet<>();
     final Artifact dependency = Mockito.mock(Artifact.class);
     when(dependency.getGroupId()).thenReturn("group");
     when(dependency.getArtifactId()).thenReturn("artifact");
@@ -367,12 +391,27 @@ public class MojoToReportOptionsConverterTest extends BasePitMojoTest {
     assertEquals("foo", actual.getFreeFormProperties().get("foo"));
     assertEquals("bar", actual.getFreeFormProperties().get("bar"));
   }
+  
+  public void testParsesTestPlugin() {
+    final ReportOptions actual = parseConfig("<testPlugin>testng</testPlugin>");
+    assertEquals("testng", actual.getTestPlugin());
+  }  
+  
+  public void testDoesNotUseClasspathJarByDefault() {
+    final ReportOptions actual = parseConfig("");
+    assertFalse(actual.useClasspathJar());
+  }  
+  
+  public void testParsesUseClasspathJar() {
+    final ReportOptions actual = parseConfig("<useClasspathJar>true</useClasspathJar>");
+    assertTrue(actual.useClasspathJar());
+  }  
+
 
   private ReportOptions parseConfig(final String xml) {
     try {
       final String pom = createPomWithConfiguration(xml);
       final AbstractPitMojo mojo = createPITMojo(pom);
-      @SuppressWarnings("unchecked")
       Predicate<Artifact> filter = Mockito.mock(Predicate.class);
       when(
           this.surefireConverter.update(any(ReportOptions.class),

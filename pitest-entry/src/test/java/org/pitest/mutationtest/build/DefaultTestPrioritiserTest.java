@@ -8,6 +8,7 @@ import static org.pitest.mutationtest.LocationMother.aLocation;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -18,11 +19,11 @@ import org.pitest.classinfo.ClassName;
 import org.pitest.coverage.ClassLine;
 import org.pitest.coverage.CoverageDatabase;
 import org.pitest.coverage.TestInfo;
-import org.pitest.functional.F;
 import org.pitest.functional.FCollection;
-import org.pitest.functional.Option;
+import java.util.Optional;
 import org.pitest.mutationtest.engine.MutationDetails;
 import org.pitest.mutationtest.engine.MutationIdentifier;
+import org.pitest.mutationtest.engine.PoisonStatus;
 
 public class DefaultTestPrioritiserTest {
 
@@ -56,7 +57,8 @@ public class DefaultTestPrioritiserTest {
     final List<TestInfo> expected = makeTestInfos(0);
     when(this.coverage.getTestsForClass(this.foo)).thenReturn(expected);
     final List<TestInfo> actual = this.testee
-        .assignTests(makeMutation("<clinit>"));
+        .assignTests(makeMutation("<clinit>")
+            .withPoisonStatus(PoisonStatus.IS_STATIC_INITIALIZER_CODE));
     assertEquals(expected, actual);
   }
 
@@ -71,29 +73,17 @@ public class DefaultTestPrioritiserTest {
         FCollection.map(actual, toTime()));
   }
 
-  private F<TestInfo, Integer> toTime() {
-    return new F<TestInfo, Integer>() {
-      @Override
-      public Integer apply(TestInfo a) {
-        return a.getTime();
-      }
-
-    };
+  private Function<TestInfo, Integer> toTime() {
+    return a -> a.getTime();
   }
 
   private List<TestInfo> makeTestInfos(final Integer... times) {
-    return new ArrayList<TestInfo>(FCollection.map(Arrays.asList(times),
+    return new ArrayList<>(FCollection.map(Arrays.asList(times),
         timeToTestInfo()));
   }
 
-  private F<Integer, TestInfo> timeToTestInfo() {
-    return new F<Integer, TestInfo>() {
-      @Override
-      public TestInfo apply(final Integer a) {
-        return new TestInfo("foo", "bar", a, Option.<ClassName> none(), 0);
-      }
-
-    };
+  private Function<Integer, TestInfo> timeToTestInfo() {
+    return a -> new TestInfo("foo", "bar", a, Optional.<ClassName> empty(), 0);
   }
 
   private MutationDetails makeMutation(final String method) {

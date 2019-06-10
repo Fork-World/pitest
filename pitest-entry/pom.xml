@@ -5,7 +5,7 @@
 	<parent>
 		<artifactId>pitest-parent</artifactId>
 		<groupId>org.pitest</groupId>
-		<version>1.2.1-SNAPSHOT</version>
+		<version>1.4.9-SNAPSHOT</version>
 	</parent>
 	<artifactId>pitest-entry</artifactId>
 	<name>pitest-entry</name>
@@ -14,6 +14,27 @@
 
 	<build>
 		<plugins>
+		    <!-- include ASM in the jar, not relocated as will never share classpath with dependencies -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-shade-plugin</artifactId>
+				<executions>
+					<execution>
+						<phase>package</phase>
+						<goals>
+							<goal>shade</goal>
+						</goals>
+						<configuration>
+							<artifactSet>
+								<includes>
+									<include>org.ow2.asm:*</include>
+								</includes>
+							</artifactSet>
+						</configuration>
+					</execution>
+				</executions>
+
+			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-checkstyle-plugin</artifactId>
@@ -100,11 +121,25 @@
 			<artifactId>pitest</artifactId>
 			<version>${project.version}</version>
 		</dependency>
+		
+		<!-- asm in main pitest project is shaded. Easiest to depend on
+		own unshaded copy for main process analysis purposes  -->
+		<dependency>
+			<groupId>org.ow2.asm</groupId>
+			<artifactId>asm</artifactId>
+			<version>${asm.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.ow2.asm</groupId>
+			<artifactId>asm-util</artifactId>
+			<version>${asm.version}</version>
+		</dependency>
 		<!-- for the xstream history store. cannot used shaded version -->
 		<dependency>
 			<groupId>com.thoughtworks.xstream</groupId>
 			<artifactId>xstream</artifactId>
 			<version>1.4.8</version>
+			<scope>test</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.pitest</groupId>
@@ -120,6 +155,13 @@
 			<scope>test</scope>
 		</dependency>
 
+		<dependency>
+			<groupId>com.google.jimfs</groupId>
+			<artifactId>jimfs</artifactId>
+			<version>1.1</version>
+			<scope>test</scope>
+		</dependency>
+	  
 		<!-- to verify compatibility -->
 		<dependency>
 			<groupId>org.easymock</groupId>
@@ -133,6 +175,7 @@
 			<version>${testng.version}</version>
 			<scope>test</scope>
 		</dependency>
+		
 	</dependencies>
 
 </project>

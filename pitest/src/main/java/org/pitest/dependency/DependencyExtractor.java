@@ -15,7 +15,6 @@
 package org.pitest.dependency;
 
 import static org.pitest.functional.prelude.Prelude.and;
-import static org.pitest.functional.prelude.Prelude.not;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -28,17 +27,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.BiFunction;
+import java.util.function.Predicate;
 import java.util.logging.Logger;
 
 import org.objectweb.asm.ClassReader;
 import org.pitest.bytecode.NullVisitor;
 import org.pitest.classinfo.ClassByteArraySource;
-import org.pitest.functional.F;
-import org.pitest.functional.F2;
 import org.pitest.functional.FCollection;
-import org.pitest.functional.Option;
+import java.util.Optional;
 import org.pitest.functional.SideEffect1;
-import org.pitest.functional.predicate.Predicate;
 import org.pitest.util.Functions;
 import org.pitest.util.Log;
 
@@ -53,7 +51,6 @@ public class DependencyExtractor {
     this.classToBytes = classToBytes;
   }
 
-  @SuppressWarnings("unchecked")
   public Collection<String> extractCallDependenciesForPackages(
       final String clazz, final Predicate<String> targetPackages)
           throws IOException {
@@ -63,27 +60,13 @@ public class DependencyExtractor {
         and(asJVMNamePredicate(targetPackages), notSuppliedClass(clazz)));
   }
 
-  private static F<String, Boolean> notSuppliedClass(final String clazz) {
-    return new F<String, Boolean>() {
-
-      @Override
-      public Boolean apply(final String a) {
-        return !Functions.jvmClassToClassName().apply(a).equals(clazz);
-      }
-
-    };
+  private static Predicate<String> notSuppliedClass(final String clazz) {
+    return a -> !Functions.jvmClassToClassName().apply(a).equals(clazz);
   }
 
-  private static F<String, Boolean> asJVMNamePredicate(
+  private static Predicate<String> asJVMNamePredicate(
       final Predicate<String> predicate) {
-    return new F<String, Boolean>() {
-
-      @Override
-      public Boolean apply(final String a) {
-        return predicate.apply(Functions.jvmClassToClassName().apply(a));
-      }
-
-    };
+    return a -> predicate.test(Functions.jvmClassToClassName().apply(a));
   }
 
   public Collection<String> extractCallDependenciesForPackages(
@@ -111,7 +94,7 @@ public class DependencyExtractor {
 
     final Map<String, List<DependencyAccess>> classesToAccesses = groupDependenciesByClass(extractRelevantDependencies(
         clazz, filter));
-    final Set<String> dependencies = new HashSet<String>(
+    final Set<String> dependencies = new HashSet<>(
         classesToAccesses.keySet());
 
     dependencies.removeAll(visited);
@@ -132,7 +115,7 @@ public class DependencyExtractor {
       final Set<String> classes, final TreeSet<String> visited,
       final Predicate<DependencyAccess> filter) throws IOException {
 
-    final Set<String> deps = new HashSet<String>();
+    final Set<String> deps = new HashSet<>();
     for (final String each : classes) {
       final Set<String> childDependencies = extractCallDependencies(each,
           visited, filter, currentDepth + 1);
@@ -144,35 +127,28 @@ public class DependencyExtractor {
   private Set<DependencyAccess> extractRelevantDependencies(final String clazz,
       final Predicate<DependencyAccess> filter) throws IOException {
     final List<DependencyAccess> dependencies = extract(clazz, filter);
-    final Set<DependencyAccess> relevantDependencies = new TreeSet<DependencyAccess>(
+    final Set<DependencyAccess> relevantDependencies = new TreeSet<>(
         equalDestinationComparator());
     FCollection.filter(dependencies, filter, relevantDependencies);
     return relevantDependencies;
   }
 
   private static Comparator<DependencyAccess> equalDestinationComparator() {
-    return new Comparator<DependencyAccess>() {
-      @Override
-      public int compare(final DependencyAccess o1, final DependencyAccess o2) {
-        return o1.getDest().compareTo(o2.getDest());
-      }
-
-    };
+    return (o1, o2) -> o1.getDest().compareTo(o2.getDest());
   }
 
-  @SuppressWarnings("unchecked")
   private List<DependencyAccess> extract(final String clazz,
       final Predicate<DependencyAccess> filter) throws IOException {
-    final Option<byte[]> bytes = this.classToBytes.getBytes(clazz);
-    if (bytes.hasNone()) {
+    final Optional<byte[]> bytes = this.classToBytes.getBytes(clazz);
+    if (!bytes.isPresent()) {
       LOG.warning("No bytes found for " + clazz);
       return Collections.emptyList();
     }
-    final ClassReader reader = new ClassReader(bytes.value());
-    final List<DependencyAccess> dependencies = new ArrayList<DependencyAccess>();
+    final ClassReader reader = new ClassReader(bytes.get());
+    final List<DependencyAccess> dependencies = new ArrayList<>();
 
     final SideEffect1<DependencyAccess> se = constructCollectingSideEffectForVisitor(
-        dependencies, and(not(nameIsEqual(clazz)), filter));
+        dependencies, and(nameIsEqual(clazz).negate(), filter));
     final DependencyClassVisitor dcv = new DependencyClassVisitor(
         new NullVisitor(), se);
     reader.accept(dcv, ClassReader.EXPAND_FRAMES);
@@ -181,7 +157,7 @@ public class DependencyExtractor {
 
   private Map<String, List<DependencyAccess>> groupDependenciesByClass(
       final Set<DependencyAccess> relevantDependencies) {
-    final List<DependencyAccess> sortedByClass = new ArrayList<DependencyAccess>(
+    final List<DependencyAccess> sortedByClass = new ArrayList<>(
         relevantDependencies.size());
     Collections.sort(sortedByClass, classNameComparator());
 
@@ -190,53 +166,34 @@ public class DependencyExtractor {
 
   }
 
-  private static F2<Map<String, List<DependencyAccess>>, DependencyAccess, Map<String, List<DependencyAccess>>> addDependenciesToMap() {
+  private static BiFunction<Map<String, List<DependencyAccess>>, DependencyAccess, Map<String, List<DependencyAccess>>> addDependenciesToMap() {
 
-    return new F2<Map<String, List<DependencyAccess>>, DependencyAccess, Map<String, List<DependencyAccess>>>() {
-      @Override
-      public Map<String, List<DependencyAccess>> apply(
-          final Map<String, List<DependencyAccess>> map,
-          final DependencyAccess access) {
+    return (map, access) -> {
 
-        List<DependencyAccess> list = map.get(access.getDest().getOwner());
-        if (list == null) {
-          list = new ArrayList<DependencyAccess>();
-        }
-        list.add(access);
-        map.put(access.getDest().getOwner(), list);
-        return map;
-      }
-
-    };
+    List<DependencyAccess> list = map.get(access.getDest().getOwner());
+    if (list == null) {
+    list = new ArrayList<>();
+    }
+    list.add(access);
+    map.put(access.getDest().getOwner(), list);
+    return map;
+   };
   }
 
   private static Comparator<DependencyAccess> classNameComparator() {
-    return new Comparator<DependencyAccess>() {
-      @Override
-      public int compare(final DependencyAccess lhs, final DependencyAccess rhs) {
-        return lhs.getDest().getOwner().compareTo(rhs.getDest().getOwner());
-      }
-    };
+    return (lhs, rhs) -> lhs.getDest().getOwner().compareTo(rhs.getDest().getOwner());
   }
 
   private static Predicate<DependencyAccess> nameIsEqual(final String clazz) {
-    return new Predicate<DependencyAccess>() {
-      @Override
-      public Boolean apply(final DependencyAccess a) {
-        return a.getDest().getOwner().equals(clazz);
-      }
-    };
+    return a -> a.getDest().getOwner().equals(clazz);
   }
 
   private static SideEffect1<DependencyAccess> constructCollectingSideEffectForVisitor(
       final List<DependencyAccess> dependencies,
       final Predicate<DependencyAccess> predicate) {
-    final SideEffect1<DependencyAccess> se = new SideEffect1<DependencyAccess>() {
-      @Override
-      public void apply(final DependencyAccess a) {
-        if (predicate.apply(a)) {
-          dependencies.add(a);
-        }
+    final SideEffect1<DependencyAccess> se = a -> {
+      if (predicate.test(a)) {
+        dependencies.add(a);
       }
     };
     return se;

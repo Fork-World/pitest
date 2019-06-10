@@ -5,25 +5,25 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
-import org.pitest.functional.F;
 import org.pitest.functional.FCollection;
-import org.pitest.functional.predicate.Predicate;
 import org.pitest.mutationtest.config.PluginServices;
 import org.pitest.plugin.ClientClasspathPlugin;
 import org.pitest.util.PitError;
 
 public class PluginFilter implements Predicate<String> {
 
-  private final Set<String> includedClassPathElement = new HashSet<String>();
+  private final Set<String> includedClassPathElement = new HashSet<>();
 
   public PluginFilter(final PluginServices plugin) {
     FCollection.mapTo(plugin.findClientClasspathPlugins(), classToLocation(),
         this.includedClassPathElement);
   }
 
-  private static F<ClientClasspathPlugin, String> classToLocation() {
-    return new F<ClientClasspathPlugin, String>() {
+  private static Function<ClientClasspathPlugin, String> classToLocation() {
+    return new Function<ClientClasspathPlugin, String>() {
       @Override
       public String apply(final ClientClasspathPlugin a) {
         try {
@@ -44,7 +44,7 @@ public class PluginFilter implements Predicate<String> {
   }
 
   @Override
-  public Boolean apply(final String a) {
+  public boolean test(final String a) {
     return this.includedClassPathElement.contains(a);
   }
 

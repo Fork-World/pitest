@@ -30,20 +30,13 @@ public class DefaultCoverageExporterTest {
   }
 
   private ResultOutputStrategy createOutputStrategy() {
-    return new ResultOutputStrategy() {
-
-      @Override
-      public Writer createWriterForFile(final String sourceFile) {
-        return DefaultCoverageExporterTest.this.out;
-      }
-
-    };
+    return sourceFile -> DefaultCoverageExporterTest.this.out;
   }
 
   @Test
   public void shouldWriteValidXMLDocumentWhenNoCoverage() {
     this.testee.recordCoverage(Collections.<BlockCoverage> emptyList());
-    String actual = this.out.toString();
+    final String actual = this.out.toString();
     assertThat(actual).contains("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
     assertThat(actual).contains("<coverage>");
     assertThat(actual).contains("</coverage>");
@@ -51,8 +44,8 @@ public class DefaultCoverageExporterTest {
 
   @Test
   public void shouldExportSuppliedCoverage() {
-    LocationBuilder loc = aLocation().withMethod("method");
-    BlockLocationBuilder block = aBlockLocation().withBlock(42);
+    final LocationBuilder loc = aLocation().withMethod("method");
+    final BlockLocationBuilder block = aBlockLocation().withBlock(42);
     final Collection<BlockCoverage> coverage = Arrays.asList(
         new BlockCoverage(block.withLocation(
             loc.withClass(ClassName.fromString("Foo"))).build(), Arrays.asList(
@@ -62,7 +55,7 @@ public class DefaultCoverageExporterTest {
             "Test3", "Test4")));
     this.testee.recordCoverage(coverage);
 
-    String actual = this.out.toString();
+    final String actual = this.out.toString();
     assertThat(actual).contains(
         "<block classname='Foo' method='method()I' number='42'>");
     assertThat(actual).contains(
@@ -71,6 +64,28 @@ public class DefaultCoverageExporterTest {
         "<tests>\n<test name='Test1'/>\n<test name='Test2'/>\n</tests>");
     assertThat(actual).contains(
         "<tests>\n<test name='Test3'/>\n<test name='Test4'/>\n</tests>");
+  }
+
+  @Test
+  public void shouldEscapeSpecialCharsInTestName() {
+    final LocationBuilder loc = aLocation().withMethod("method");
+    final BlockLocationBuilder block = aBlockLocation().withBlock(42);
+    final Collection<BlockCoverage> coverage = Arrays.asList(
+        new BlockCoverage(
+            block.withLocation(loc.withClass(ClassName.fromString("Foo"))).build(),
+            Collections.singletonList("ParameterizedTest[case='Not so simple quotes']")),
+        new BlockCoverage(
+            block.withLocation(loc.withClass(ClassName.fromString("Foo"))).build(),
+            Collections.singletonList("ParameterizedTest[case=\0 Null-Byte]"))
+        );
+
+    testee.recordCoverage(coverage);
+
+    final String actual = this.out.toString();
+    assertThat(actual).contains(
+        "<tests>\n<test name='ParameterizedTest[case=&#39;Not so simple quotes&#39;]'/>\n</tests>");
+    assertThat(actual).contains(
+        "<tests>\n<test name='ParameterizedTest[case=\\0 Null-Byte]'/>\n</tests>");
   }
 
 }

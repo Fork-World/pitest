@@ -20,6 +20,7 @@ import static org.junit.Assert.assertTrue;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.io.Writer;
+import java.util.Arrays;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -37,7 +38,7 @@ public class XMLReportListenerTest {
   @Before
   public void setup() {
     this.out = new StringWriter();
-    this.testee = new XMLReportListener(this.out);
+    this.testee = new XMLReportListener(this.out, false);
   }
 
   @Test
@@ -51,41 +52,61 @@ public class XMLReportListenerTest {
   @Test
   public void shouldOutputKillingTestWhenOneFound() throws IOException {
     final MutationResult mr = createdKilledMutationWithKillingTestOf("foo");
-    this.testee.handleMutationResult(MutationTestResultMother
-        .createClassResults(mr));
-    final String expected = "<mutation detected='true' status='KILLED'><sourceFile>file</sourceFile><mutatedClass>clazz</mutatedClass><mutatedMethod>method</mutatedMethod><methodDescription>()I</methodDescription><lineNumber>42</lineNumber><mutator>mutator</mutator><index>1</index><killingTest>foo</killingTest><description>desc</description></mutation>\n";
+    this.testee
+        .handleMutationResult(MutationTestResultMother.createClassResults(mr));
+    final String expected = "<mutation detected='true' status='KILLED' numberOfTestsRun='1'><sourceFile>file</sourceFile><mutatedClass>clazz</mutatedClass><mutatedMethod>method</mutatedMethod><methodDescription>()I</methodDescription><lineNumber>42</lineNumber><mutator>mutator</mutator><index>1</index><block>0</block><killingTest>foo</killingTest><description>desc</description></mutation>\n";
+    assertEquals(expected, this.out.toString());
+  }
+
+  @Test
+  public void shouldOutputFullMutationMatrixWhenEnabled() throws IOException {
+    this.testee = new XMLReportListener(this.out, true);
+    final MutationResult mr = new MutationResult(
+            MutationTestResultMother.createDetails(),
+            new MutationStatusTestPair(3, DetectionStatus.KILLED, Arrays.asList("foo", "foo2"), Arrays.asList("bar")));
+    this.testee
+        .handleMutationResult(MutationTestResultMother.createClassResults(mr));
+    final String expected = "<mutation detected='true' status='KILLED' numberOfTestsRun='3'><sourceFile>file</sourceFile><mutatedClass>clazz</mutatedClass><mutatedMethod>method</mutatedMethod><methodDescription>()I</methodDescription><lineNumber>42</lineNumber><mutator>mutator</mutator><index>1</index><block>0</block><killingTests>foo|foo2</killingTests><succeedingTests>bar</succeedingTests><description>desc</description></mutation>\n";
     assertEquals(expected, this.out.toString());
   }
 
   @Test
   public void shouldEscapeGTAndLTSymbols() {
     final MutationResult mr = createdKilledMutationWithKillingTestOf("<foo>");
-    this.testee.handleMutationResult(MutationTestResultMother
-        .createClassResults(mr));
+    this.testee
+        .handleMutationResult(MutationTestResultMother.createClassResults(mr));
     assertTrue(this.out.toString().contains("&#60;foo&#62;"));
+  }
+
+  @Test
+  public void shouldEscapeNullBytes() {
+    final MutationResult mr = createdKilledMutationWithKillingTestOf("\0 Null-Byte");
+    this.testee
+            .handleMutationResult(MutationTestResultMother.createClassResults(mr));
+    assertTrue(this.out.toString().contains("\\0 Null-Byte"));
   }
 
   private MutationResult createdKilledMutationWithKillingTestOf(
       final String killingTest) {
     final MutationResult mr = new MutationResult(
-        MutationTestResultMother.createDetails(), new MutationStatusTestPair(1,
-            DetectionStatus.KILLED, killingTest));
+        MutationTestResultMother.createDetails(),
+        new MutationStatusTestPair(1, DetectionStatus.KILLED, killingTest));
     return mr;
   }
 
   @Test
   public void shouldOutputNoneWhenNoKillingTestFound() throws IOException {
     final MutationResult mr = createSurvivingMutant();
-    this.testee.handleMutationResult(MutationTestResultMother
-        .createClassResults(mr));
-    final String expected = "<mutation detected='false' status='SURVIVED'><sourceFile>file</sourceFile><mutatedClass>clazz</mutatedClass><mutatedMethod>method</mutatedMethod><methodDescription>()I</methodDescription><lineNumber>42</lineNumber><mutator>mutator</mutator><index>1</index><killingTest/><description>desc</description></mutation>\n";
+    this.testee
+        .handleMutationResult(MutationTestResultMother.createClassResults(mr));
+    final String expected = "<mutation detected='false' status='SURVIVED' numberOfTestsRun='1'><sourceFile>file</sourceFile><mutatedClass>clazz</mutatedClass><mutatedMethod>method</mutatedMethod><methodDescription>()I</methodDescription><lineNumber>42</lineNumber><mutator>mutator</mutator><index>1</index><block>0</block><killingTest/><description>desc</description></mutation>\n";
     assertEquals(expected, this.out.toString());
   }
 
   private MutationResult createSurvivingMutant() {
     final MutationResult mr = new MutationResult(
-        MutationTestResultMother.createDetails(), new MutationStatusTestPair(1,
-            DetectionStatus.SURVIVED));
+        MutationTestResultMother.createDetails(),
+        MutationStatusTestPair.notAnalysed(1, DetectionStatus.SURVIVED));
     return mr;
   }
 

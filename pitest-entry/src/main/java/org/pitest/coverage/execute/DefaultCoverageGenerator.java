@@ -21,7 +21,9 @@ import java.net.ServerSocket;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Function;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 import org.pitest.classinfo.ClassInfo;
 import org.pitest.classpath.CodeSource;
@@ -30,19 +32,19 @@ import org.pitest.coverage.CoverageExporter;
 import org.pitest.coverage.CoverageGenerator;
 import org.pitest.coverage.CoverageResult;
 import org.pitest.coverage.analysis.LineMapper;
-import org.pitest.functional.F;
 import org.pitest.functional.FCollection;
 import org.pitest.functional.SideEffect1;
 import org.pitest.functional.prelude.Prelude;
 import org.pitest.help.Help;
 import org.pitest.help.PitHelpError;
+import org.pitest.mutationtest.config.TestPluginArguments;
 import org.pitest.process.LaunchOptions;
 import org.pitest.process.ProcessArgs;
-import org.pitest.testapi.Configuration;
 import org.pitest.util.ExitCode;
 import org.pitest.util.Log;
 import org.pitest.util.PitError;
 import org.pitest.util.SocketFinder;
+import org.pitest.util.StringUtil;
 import org.pitest.util.Timings;
 import org.pitest.util.Unchecked;
 
@@ -106,7 +108,10 @@ public class DefaultCoverageGenerator implements CoverageGenerator {
 
   private static void verifyBuildSuitableForMutationTesting(final CoverageData coverage) {
     if (!coverage.allTestsGreen()) {
-      throw new PitHelpError(Help.FAILING_TESTS);
+      LOG.severe("Tests failing without mutation: " + StringUtil.newLine()
+          + coverage.getFailingTestDescriptions().stream().map(test -> test.toString())
+          .collect(Collectors.joining(StringUtil.newLine())));
+      throw new PitHelpError(Help.FAILING_TESTS, coverage.getCountFailedTests());
     }
   }
 
@@ -130,7 +135,7 @@ public class DefaultCoverageGenerator implements CoverageGenerator {
 
     process.start();
 
-    ExitCode exitCode = process.waitToDie();
+    final ExitCode exitCode = process.waitToDie();
 
     if (exitCode == ExitCode.JUNIT_ISSUE) {
       LOG.severe("Error generating coverage. Please check that your classpath contains JUnit 4.6 or above.");
@@ -145,14 +150,8 @@ public class DefaultCoverageGenerator implements CoverageGenerator {
     }
   }
 
-  private static F<ClassInfo, String> classInfoToName() {
-    return new F<ClassInfo, String>() {
-      @Override
-      public String apply(final ClassInfo a) {
-        return a.getName().asInternalName();
-      }
-
-    };
+  private static Function<ClassInfo, String> classInfoToName() {
+    return a -> a.getName().asInternalName();
   }
 
   private SideEffect1<String> captureStandardOutIfVerbose() {
@@ -164,21 +163,11 @@ public class DefaultCoverageGenerator implements CoverageGenerator {
   }
 
   private static SideEffect1<String> logInfo() {
-    return new SideEffect1<String>() {
-      @Override
-      public void apply(final String a) {
-        LOG.info("MINION : " + a);
-      }
-    };
+    return a -> LOG.info("MINION : " + a);
   }
 
   private static SideEffect1<String> log() {
-    return new SideEffect1<String>() {
-      @Override
-      public void apply(final String a) {
-        LOG.fine("MINION : " + a);
-      }
-    };
+    return a -> LOG.fine("MINION : " + a);
   }
 
   private SideEffect1<CoverageResult> resultProcessor(
@@ -190,7 +179,9 @@ public class DefaultCoverageGenerator implements CoverageGenerator {
 
       @Override
       public void apply(final CoverageResult cr) {
-        coverage.calculateClassCoverage(cr);
+        if (cr.isGreenTest() || !coverageOptions.getPitConfig().skipFailingTests()) {
+          coverage.calculateClassCoverage(cr);
+        }
         if (DefaultCoverageGenerator.this.showProgress) {
           System.out.printf("%s", this.spinner[this.i % this.spinner.length]);
         }
@@ -201,7 +192,7 @@ public class DefaultCoverageGenerator implements CoverageGenerator {
   }
 
   @Override
-  public Configuration getConfiguration() {
+  public TestPluginArguments getConfiguration() {
     return this.coverageOptions.getPitConfig();
   }
 

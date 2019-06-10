@@ -14,6 +14,7 @@
  */
 package org.pitest.mutationtest.engine.gregor;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -22,9 +23,12 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.Callable;
-import java.util.logging.Logger;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.util.ASMifier;
@@ -33,49 +37,38 @@ import org.objectweb.asm.util.TraceClassVisitor;
 import org.pitest.classinfo.ClassByteArraySource;
 import org.pitest.classinfo.ClassName;
 import org.pitest.classpath.ClassPathByteArraySource;
-import org.pitest.functional.F;
 import org.pitest.functional.FCollection;
-import org.pitest.functional.FunctionalList;
-import org.pitest.functional.predicate.Predicate;
-import org.pitest.functional.predicate.True;
 import org.pitest.mutationtest.engine.Mutant;
 import org.pitest.mutationtest.engine.MutationDetails;
-import org.pitest.mutationtest.engine.gregor.inlinedcode.InlinedCodeFilter;
-import org.pitest.mutationtest.engine.gregor.inlinedcode.NoInlinedCodeDetection;
 import org.pitest.simpletest.ExcludedPrefixIsolationStrategy;
 import org.pitest.simpletest.Transformation;
 import org.pitest.simpletest.TransformingClassLoader;
-import org.pitest.util.IsolationUtils;
 import org.pitest.util.Unchecked;
+import org.pitest.util.XStreamCloning;
 
 public abstract class MutatorTestBase {
 
   protected GregorMutater engine;
 
-  protected FunctionalList<MutationDetails> findMutationsFor(
+  protected List<MutationDetails> findMutationsFor(
       final Class<?> clazz) {
-    return this.engine.findMutations(new ClassName(clazz));
+    return this.engine.findMutations(ClassName.fromClass(clazz));
   }
 
-  protected FunctionalList<MutationDetails> findMutationsFor(final String clazz) {
-    return this.engine.findMutations(new ClassName(clazz));
+  protected List<MutationDetails> findMutationsFor(final String clazz) {
+    return this.engine.findMutations(ClassName.fromString(clazz));
   }
 
   protected void createTesteeWith(final Predicate<MethodInfo> filter,
       final MethodMutatorFactory... mutators) {
     this.engine = new GregorMutater(new ClassPathByteArraySource(), filter,
-        Arrays.asList(mutators), filteredClasses(), inlinedCodeFilter());
-  }
-
-  private Collection<String> filteredClasses() {
-    return Arrays.asList(Logger.class.getName(), StringBuilder.class.getName());
+        Arrays.asList(mutators));
   }
 
   protected void createTesteeWith(final ClassByteArraySource source,
       final Predicate<MethodInfo> filter,
       final Collection<MethodMutatorFactory> mutators) {
-    this.engine = new GregorMutater(source, filter, mutators,
-        filteredClasses(), inlinedCodeFilter());
+    this.engine = new GregorMutater(source, filter, mutators);
   }
 
   protected void createTesteeWith(final Predicate<MethodInfo> filter,
@@ -87,20 +80,16 @@ public abstract class MutatorTestBase {
       final Collection<String> loggingClasses,
       final Collection<MethodMutatorFactory> mutators) {
     this.engine = new GregorMutater(new ClassPathByteArraySource(), filter,
-        mutators, loggingClasses, inlinedCodeFilter());
-  }
-
-  private InlinedCodeFilter inlinedCodeFilter() {
-    return new NoInlinedCodeDetection();
+        mutators);
   }
 
   protected void createTesteeWith(
       final Collection<MethodMutatorFactory> mutators) {
-    createTesteeWith(True.<MethodInfo> all(), mutators);
+    createTesteeWith(i -> true, mutators);
   }
 
   protected void createTesteeWith(final MethodMutatorFactory... mutators) {
-    createTesteeWith(True.<MethodInfo> all(), mutators);
+    createTesteeWith(i -> true, mutators);
   }
 
   protected <T> void assertMutantCallableReturns(final Callable<T> unmutated,
@@ -110,7 +99,7 @@ public abstract class MutatorTestBase {
 
   protected void assertNoMutants(final Class<?> mutee) {
     final Collection<MutationDetails> actual = findMutationsFor(mutee);
-    assertTrue(actual.isEmpty());
+    assertThat(actual).isEmpty();
   }
 
   protected <T> T mutateAndCall(final Callable<T> unmutated, final Mutant mutant) {
@@ -132,43 +121,31 @@ public abstract class MutatorTestBase {
   }
 
   private Transformation createTransformation(final Mutant mutant) {
-    return new Transformation() {
-
-      @Override
-      public byte[] transform(final String name, final byte[] bytes) {
-        if (name.equals(mutant.getDetails().getClassName().asJavaName())) {
-          return mutant.getBytes();
-        } else {
-          return bytes;
-        }
+    return (name, bytes) -> {
+      if (name.equals(mutant.getDetails().getClassName().asJavaName())) {
+        return mutant.getBytes();
+      } else {
+        return bytes;
       }
-
     };
   }
 
   @SuppressWarnings("unchecked")
   private <T> T runInClassLoader(final ClassLoader loader,
       final Callable<T> callable) throws Exception {
-    final Callable<T> c = (Callable<T>) IsolationUtils.cloneForLoader(callable,
+    final Callable<T> c = (Callable<T>) XStreamCloning.cloneForLoader(callable,
         loader);
     return c.call();
 
   }
 
   protected List<Mutant> getMutants(
-      final FunctionalList<MutationDetails> details) {
-    return details.map(createMutant());
+      final List<MutationDetails> details) {
+    return details.stream().map(createMutant()).collect(Collectors.toList());
   }
 
-  private F<MutationDetails, Mutant> createMutant() {
-    return new F<MutationDetails, Mutant>() {
-
-      @Override
-      public Mutant apply(final MutationDetails a) {
-        return MutatorTestBase.this.engine.getMutation(a.getId());
-      }
-
-    };
+  private Function<MutationDetails, Mutant> createMutant() {
+    return a -> MutatorTestBase.this.engine.getMutation(a.getId());
   }
 
   protected Mutant getFirstMutant(final Collection<MutationDetails> actual) {
@@ -184,6 +161,23 @@ public abstract class MutatorTestBase {
     return getFirstMutant(actual);
   }
 
+  protected Mutant getNthMutant(final Class<?> mutee, int n) {
+    final Collection<MutationDetails> actual = findMutationsFor(mutee);
+    return getNthMutant(actual, n);
+  }
+
+  protected Mutant getNthMutant(final Collection<MutationDetails> actual, int n) {
+    assertFalse("There are less than " + (n + 1) +" mutants", actual.size() < n + 1 );
+    Iterator<MutationDetails> i = actual.iterator();
+    for (int j = 0; j < n && i.hasNext(); j++) {
+      i.next();
+    }
+    final Mutant mutant = this.engine.getMutation(i.next()
+            .getId());
+    verifyMutant(mutant);
+    return mutant;
+  }
+
   private void verifyMutant(final Mutant mutant) {
     // printMutant(mutant);
     final StringWriter sw = new StringWriter();
@@ -193,21 +187,20 @@ public abstract class MutatorTestBase {
 
   }
 
-  protected void printMutant(final Mutant mutant) {    
+  protected void printMutant(final Mutant mutant) {
      final ClassReader reader = new ClassReader(mutant.getBytes());
      reader.accept(new TraceClassVisitor(null, new ASMifier(), new PrintWriter(
          System.out)), ClassReader.EXPAND_FRAMES);
   }
 
   protected void assertMutantsReturn(final Callable<String> mutee,
-
-      final FunctionalList<MutationDetails> details,
+      final List<MutationDetails> details,
       final String... expectedResults) {
 
     final List<Mutant> mutants = this.getMutants(details);
     assertEquals("Should return one mutant for each request", details.size(),
         mutants.size());
-    final FunctionalList<String> results = FCollection.map(mutants,
+    final List<String> results = FCollection.map(mutants,
         mutantToStringReults(mutee));
 
     int i = 0;
@@ -217,19 +210,12 @@ public abstract class MutatorTestBase {
     }
   }
 
-  private F<Mutant, String> mutantToStringReults(final Callable<String> mutee) {
-    return new F<Mutant, String>() {
-
-      @Override
-      public String apply(final Mutant mutant) {
-        return mutateAndCall(mutee, mutant);
-      }
-
-    };
+  private Function<Mutant, String> mutantToStringReults(final Callable<String> mutee) {
+    return mutant -> mutateAndCall(mutee, mutant);
   }
 
   protected void assertMutantsAreFrom(
-      final FunctionalList<MutationDetails> actualDetails,
+      final List<MutationDetails> actualDetails,
       final Class<?>... mutators) {
     assertEquals(mutators.length, actualDetails.size());
     int i = 0;
@@ -239,29 +225,22 @@ public abstract class MutatorTestBase {
     }
   }
 
-  protected Mutant createFirstMutant(
-      final Class<? extends Callable<String>> mutee) {
+  protected <T> Mutant createFirstMutant(
+      final Class<? extends Callable<T>> mutee) {
     final Collection<MutationDetails> actual = findMutationsFor(mutee);
     return getFirstMutant(actual);
   }
 
   protected Predicate<MethodInfo> mutateOnlyCallMethod() {
-    return new Predicate<MethodInfo>() {
-
-      @Override
-      public Boolean apply(final MethodInfo a) {
-        return a.getName().equals("call");
-      }
-
-    };
+    return a -> a.getName().equals("call");
   }
 
-  protected F<MutationDetails, Boolean> descriptionContaining(final String value) {
-    return new F<MutationDetails, Boolean>() {
-      @Override
-      public Boolean apply(final MutationDetails a) {
-        return a.getDescription().contains(value);
-      }
-    };
+  protected Predicate<MutationDetails> descriptionContaining(final String value) {
+    return a -> a.getDescription().contains(value);
+  }
+
+  protected void assertMutantDescriptionIncludes(String string, Class<?> clazz) {
+    final Collection<MutationDetails> actual = findMutationsFor(clazz);
+    assertThat(actual.iterator().next().getDescription()).contains(string);
   }
 }

@@ -14,9 +14,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
-import junit.framework.TestCase;
-import junit.framework.TestSuite;
-
 import org.jmock.MockObjectTestCase;
 import org.junit.After;
 import org.junit.Before;
@@ -35,7 +32,7 @@ import org.junit.runners.Parameterized.Parameters;
 import org.junit.runners.Suite.SuiteClasses;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.pitest.functional.Option;
+import java.util.Optional;
 import org.pitest.help.PitHelpError;
 import org.pitest.junit.JUnitCompatibleConfiguration;
 import org.pitest.testapi.Description;
@@ -50,10 +47,14 @@ import org.pitest.testapi.execute.containers.UnContainer;
 
 import com.example.JUnitParamsTest;
 
+import junit.framework.TestCase;
+import junit.framework.TestSuite;
+
 public class TestJUnitConfiguration {
 
-  private final JUnitCompatibleConfiguration testee = new JUnitCompatibleConfiguration(
-                                                        new TestGroupConfig(), 
+  private  JUnitCompatibleConfiguration testee = new JUnitCompatibleConfiguration(
+                                                        new TestGroupConfig(),
+                                                        Collections.<String>emptyList(),
                                                         Collections.<String>emptyList());
   private Pitest                             pitest;
   private Container                          container;
@@ -66,7 +67,7 @@ public class TestJUnitConfiguration {
     MockitoAnnotations.initMocks(this);
     this.container = new UnContainer();
 
-    this.pitest = new Pitest(Collections.singletonList(this.listener));
+    this.pitest = new Pitest(this.listener);
   }
 
   public static class SimpleJUnit4Test {
@@ -492,7 +493,7 @@ public class TestJUnitConfiguration {
 
   @Test
   public void shouldNotReportAnErrorWhenCorrectJUnitVersionOnClasspath() {
-    assertEquals(Option.<PitHelpError> none(), this.testee.verifyEnvironment());
+    assertEquals(Optional.<PitHelpError> empty(), this.testee.verifyEnvironment());
   }
 
   public static class HasAssumptionFailure {
@@ -605,12 +606,39 @@ public class TestJUnitConfiguration {
     verify(this.listener, times(2)).onTestSuccess((any(TestResult.class)));
   }
 
+  @Test
+  public void doesNotRunExcludedCategories() {
+    exclude(ExcludeMe.class);
+    run(HasExcludedCategory.class);
+    verify(this.listener, never()).onTestStart(any(Description.class));
+  }
+
+  @interface ExcludeMe {
+
+  }
+
+  @ExcludeMe
+  public static class HasExcludedCategory {
+    @Test
+    public void iAmExcluded() {
+
+    }
+  }
+
+  private void exclude(Class<?> class1) {
+    final List<String> exclude = Collections.singletonList(class1.getName());
+    final List<String> include = Collections.emptyList();
+    this.testee = new JUnitCompatibleConfiguration(
+            new TestGroupConfig(include,exclude),
+            Collections.<String>emptyList(), Collections.<String>emptyList());
+  }
+
   private void run(final Class<?> clazz) {
     this.pitest.run(this.container, this.testee, clazz);
   }
 
   private List<TestUnit> find(Class<?> clazz) {
-    FindTestUnits finder = new FindTestUnits(this.testee);
+    final FindTestUnits finder = new FindTestUnits(this.testee);
     return finder.findTestUnitsForAllSuppliedClasses(Arrays
         .<Class<?>> asList(clazz));
   }

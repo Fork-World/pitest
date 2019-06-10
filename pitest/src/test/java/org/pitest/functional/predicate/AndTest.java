@@ -8,46 +8,40 @@ import org.junit.Test;
 
 public class AndTest {
 
-  @SuppressWarnings("unchecked")
   @Test
   public void shouldReturnFalseWhenSuppliedNoPredicate() {
     final And<Object> testee = and();
-    assertFalse(testee.apply(null));
+    assertFalse(testee.test(null));
   }
 
-  @SuppressWarnings("unchecked")
   @Test
   public void shouldBeTrueWhenGivenTrue() {
-    final And<Object> testee = and(True.all());
-    assertTrue(testee.apply(null));
+    final And<Object> testee = and(i -> true);
+    assertTrue(testee.test(null));
   }
 
-  @SuppressWarnings("unchecked")
   @Test
   public void shouldBeFalseWhenGivenFalse() {
     final And<Object> testee = and(False.instance());
-    assertFalse(testee.apply(null));
+    assertFalse(testee.test(null));
   }
 
-  @SuppressWarnings("unchecked")
   @Test
   public void shouldBeTrueWhenGivenTrueAndTrue() {
-    final And<Object> testee = and(True.all(), True.all());
-    assertTrue(testee.apply(null));
+    final And<Object> testee = and(i -> true, i -> true);
+    assertTrue(testee.test(null));
   }
 
-  @SuppressWarnings("unchecked")
   @Test
   public void shouldBeFalseWhenGivenTrueAndFalse() {
-    final And<Object> testee = and(True.all(), False.instance());
-    assertFalse(testee.apply(null));
+    final And<Object> testee = and( i -> true, i -> false);
+    assertFalse(testee.test(null));
   }
 
-  @SuppressWarnings("unchecked")
   @Test
   public void shouldBeFalseWhenGivenFalseAndFalse() {
     final And<Object> testee = and(False.instance(), False.instance());
-    assertFalse(testee.apply(null));
+    assertFalse(testee.test(null));
   }
 
 }

@@ -1,5 +1,8 @@
 package org.pitest.coverage.execute;
 
+import java.io.Serializable;
+import java.util.Collection;
+
 /*
  * Copyright 2010 Henry Coles
  *
@@ -15,39 +18,63 @@ package org.pitest.coverage.execute;
  * See the License for the specific language governing permissions and limitations under the License.
  */
 
-import org.pitest.functional.predicate.Predicate;
-import org.pitest.testapi.Configuration;
+import java.util.function.Predicate;
 
-public class CoverageOptions {
+import org.pitest.functional.prelude.Prelude;
+import org.pitest.mutationtest.config.TestPluginArguments;
+import org.pitest.util.Glob;
+import org.pitest.util.Preconditions;
 
-  private final Predicate<String> filter;
+public class CoverageOptions implements Serializable {
+
+  private static final long serialVersionUID = 1L;
+
+  private final Collection<String>      include;
+  private final Collection<String>      exclude;
   private final boolean           verbose;
-  private final Configuration     pitConfig;
+  private final TestPluginArguments pitConfig;
   private final int               maxDependencyDistance;
 
-  public CoverageOptions(final Predicate<String> filter,
-      final Configuration pitConfig, final boolean verbose,
+  public CoverageOptions(final Collection<String> include, final Collection<String> exclude,
+      final TestPluginArguments pitConfig, final boolean verbose,
       final int maxDependencyDistance) {
-    this.filter = filter;
+    Preconditions.checkNotNull(pitConfig);
+    this.include = include;
+    this.exclude = exclude;
     this.verbose = verbose;
     this.pitConfig = pitConfig;
     this.maxDependencyDistance = maxDependencyDistance;
   }
 
   public Predicate<String> getFilter() {
-    return this.filter;
+    return Prelude.and(Prelude.or(Glob.toGlobPredicates(this.include)),
+        Prelude.not(Prelude.or(Glob.toGlobPredicates(this.exclude))),
+        Prelude.not(commonClasses()));
   }
 
   public boolean isVerbose() {
     return this.verbose;
   }
 
-  public Configuration getPitConfig() {
+  public TestPluginArguments getPitConfig() {
     return this.pitConfig;
   }
 
   public int getDependencyAnalysisMaxDistance() {
     return this.maxDependencyDistance;
+  }
+
+  private static Predicate<String> commonClasses() {
+    return Prelude.or(
+        glob("java/*"),
+        glob("sun/*"),
+        glob("org/pitest/coverage/*"),
+        glob("org/pitest/reloc/*"),
+        glob("org/pitest/boot/*"));
+  }
+
+  private static Glob glob(String match) {
+    return new Glob(match);
   }
 
 }

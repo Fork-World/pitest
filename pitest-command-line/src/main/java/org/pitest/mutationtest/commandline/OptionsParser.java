@@ -24,16 +24,19 @@ import static org.pitest.mutationtest.config.ConfigOption.DEPENDENCY_DISTANCE;
 import static org.pitest.mutationtest.config.ConfigOption.EXCLUDED_CLASSES;
 import static org.pitest.mutationtest.config.ConfigOption.EXCLUDED_GROUPS;
 import static org.pitest.mutationtest.config.ConfigOption.EXCLUDED_METHOD;
+import static org.pitest.mutationtest.config.ConfigOption.EXCLUDED_TEST_CLASSES;
 import static org.pitest.mutationtest.config.ConfigOption.EXPORT_LINE_COVERAGE;
 import static org.pitest.mutationtest.config.ConfigOption.FAIL_WHEN_NOT_MUTATIONS;
+import static org.pitest.mutationtest.config.ConfigOption.FEATURES;
+import static org.pitest.mutationtest.config.ConfigOption.FULL_MUTATION_MATRIX;
 import static org.pitest.mutationtest.config.ConfigOption.HISTORY_INPUT_LOCATION;
 import static org.pitest.mutationtest.config.ConfigOption.HISTORY_OUTPUT_LOCATION;
 import static org.pitest.mutationtest.config.ConfigOption.INCLUDED_GROUPS;
+import static org.pitest.mutationtest.config.ConfigOption.INCLUDED_TEST_METHODS;
 import static org.pitest.mutationtest.config.ConfigOption.INCLUDE_LAUNCH_CLASSPATH;
 import static org.pitest.mutationtest.config.ConfigOption.JVM_PATH;
 import static org.pitest.mutationtest.config.ConfigOption.MAX_MUTATIONS_PER_CLASS;
 import static org.pitest.mutationtest.config.ConfigOption.MAX_SURVIVING;
-import static org.pitest.mutationtest.config.ConfigOption.MUTATE_STATIC_INITIALIZERS;
 import static org.pitest.mutationtest.config.ConfigOption.MUTATIONS;
 import static org.pitest.mutationtest.config.ConfigOption.MUTATION_ENGINE;
 import static org.pitest.mutationtest.config.ConfigOption.MUTATION_THRESHOLD;
@@ -44,10 +47,12 @@ import static org.pitest.mutationtest.config.ConfigOption.REPORT_DIR;
 import static org.pitest.mutationtest.config.ConfigOption.SOURCE_DIR;
 import static org.pitest.mutationtest.config.ConfigOption.TARGET_CLASSES;
 import static org.pitest.mutationtest.config.ConfigOption.TEST_FILTER;
+import static org.pitest.mutationtest.config.ConfigOption.TEST_PLUGIN;
 import static org.pitest.mutationtest.config.ConfigOption.THREADS;
 import static org.pitest.mutationtest.config.ConfigOption.TIMEOUT_CONST;
 import static org.pitest.mutationtest.config.ConfigOption.TIMEOUT_FACTOR;
 import static org.pitest.mutationtest.config.ConfigOption.TIME_STAMPED_REPORTS;
+import static org.pitest.mutationtest.config.ConfigOption.USE_CLASSPATH_JAR;
 import static org.pitest.mutationtest.config.ConfigOption.USE_INLINED_CODE_DETECTION;
 import static org.pitest.mutationtest.config.ConfigOption.VERBOSE;
 
@@ -59,7 +64,17 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
+import java.util.function.Predicate;
 import java.util.logging.Logger;
+
+import org.pitest.classpath.ClassPath;
+import org.pitest.functional.FCollection;
+import org.pitest.mutationtest.config.ConfigOption;
+import org.pitest.mutationtest.config.ReportOptions;
+import org.pitest.testapi.TestGroupConfig;
+import org.pitest.util.Glob;
+import org.pitest.util.Log;
+import org.pitest.util.Unchecked;
 
 import joptsimple.ArgumentAcceptingOptionSpec;
 import joptsimple.OptionException;
@@ -69,22 +84,12 @@ import joptsimple.OptionSpec;
 import joptsimple.OptionSpecBuilder;
 import joptsimple.util.KeyValuePair;
 
-import org.pitest.classpath.ClassPath;
-import org.pitest.functional.FCollection;
-import org.pitest.functional.predicate.Predicate;
-import org.pitest.mutationtest.config.ConfigOption;
-import org.pitest.mutationtest.config.ReportOptions;
-import org.pitest.testapi.TestGroupConfig;
-import org.pitest.util.Glob;
-import org.pitest.util.Log;
-import org.pitest.util.Unchecked;
-
 public class OptionsParser {
 
   private final Predicate<String>                    dependencyFilter;
-  
+
   private static final Logger LOG = Log.getLogger();
-  
+
   private final OptionParser                         parser;
   private final ArgumentAcceptingOptionSpec<String>  reportDirSpec;
   private final OptionSpec<String>                   targetClassesSpec;
@@ -96,14 +101,14 @@ public class OptionsParser {
   private final OptionSpec<File>                     historyOutputSpec;
   private final OptionSpec<File>                     historyInputSpec;
   private final OptionSpec<String>                   mutators;
+  private final OptionSpec<String>                   features;
   private final OptionSpec<String>                   jvmArgs;
-  private final ArgumentAcceptingOptionSpec<Boolean> mutateStatics;
   private final OptionSpec<Float>                    timeoutFactorSpec;
   private final OptionSpec<Long>                     timeoutConstSpec;
   private final OptionSpec<String>                   excludedMethodsSpec;
-  private final OptionSpec<Integer>                  maxMutationsPerClassSpec;
   private final ArgumentAcceptingOptionSpec<Boolean> verboseSpec;
   private final OptionSpec<String>                   excludedClassesSpec;
+  private final OptionSpec<String>                   excludedTestClassesSpec;
   private final OptionSpec<String>                   outputFormatSpec;
   private final OptionSpec<String>                   additionalClassPathSpec;
   private final OptionSpec<File>                     classPathFile;
@@ -111,6 +116,8 @@ public class OptionsParser {
   private final ArgumentAcceptingOptionSpec<String>  codePaths;
   private final OptionSpec<String>                   excludedGroupsSpec;
   private final OptionSpec<String>                   includedGroupsSpec;
+  private final OptionSpec<String>                   includedTestMethodsSpec;
+  private final OptionSpec<Boolean>                  fullMutationMatrixSpec;
   private final OptionSpec<Integer>                  mutationUnitSizeSpec;
   private final ArgumentAcceptingOptionSpec<Boolean> timestampedReportsSpec;
   private final ArgumentAcceptingOptionSpec<Boolean> detectInlinedCode;
@@ -121,15 +128,22 @@ public class OptionsParser {
   private final ArgumentAcceptingOptionSpec<Boolean> exportLineCoverageSpec;
   private final OptionSpec<String>                   javaExecutable;
   private final OptionSpec<KeyValuePair>             pluginPropertiesSpec;
-
+  private final OptionSpec<String>                   testPluginSpec;
   private final ArgumentAcceptingOptionSpec<Boolean> includeLaunchClasspathSpec;
-
+  private final ArgumentAcceptingOptionSpec<Boolean> useClasspathJarSpec;
+  
   public OptionsParser(Predicate<String> dependencyFilter) {
 
     this.dependencyFilter = dependencyFilter;
 
     this.parser = new OptionParser();
     this.parser.acceptsAll(Arrays.asList("h", "?"), "show help");
+
+    this.testPluginSpec = parserAccepts(TEST_PLUGIN)
+        .withRequiredArg()
+        .ofType(String.class)
+        .defaultsTo("junit")
+        .describedAs("test plugin to use");
 
     this.reportDirSpec = parserAccepts(REPORT_DIR).withRequiredArg()
         .describedAs("directory to create report folder in").required();
@@ -165,10 +179,10 @@ public class OptionsParser {
         .ofType(Integer.class).defaultsTo(THREADS.getDefault(Integer.class))
         .describedAs("number of threads to use for testing");
 
-    this.maxMutationsPerClassSpec = parserAccepts(MAX_MUTATIONS_PER_CLASS)
+    parserAccepts(MAX_MUTATIONS_PER_CLASS)
         .withRequiredArg().ofType(Integer.class)
         .defaultsTo(MAX_MUTATIONS_PER_CLASS.getDefault(Integer.class))
-        .describedAs("max number of mutations to allow for each class");
+        .describedAs("No longer supported. Use CLASSLIMIT(limit[42]) feature instead");
 
     this.sourceDirSpec = parserAccepts(SOURCE_DIR).withRequiredArg()
         .ofType(File.class).withValuesSeparatedBy(',')
@@ -178,16 +192,13 @@ public class OptionsParser {
         .ofType(String.class).withValuesSeparatedBy(',')
         .describedAs("comma separated list of mutation operators");
 
+    this.features = parserAccepts(FEATURES).withRequiredArg()
+        .ofType(String.class).withValuesSeparatedBy(',')
+        .describedAs("comma separated list of features to enable/disable.");
+
     this.jvmArgs = parserAccepts(CHILD_JVM).withRequiredArg()
         .withValuesSeparatedBy(',')
         .describedAs("comma separated list of child JVM args");
-
-    this.mutateStatics = parserAccepts(MUTATE_STATIC_INITIALIZERS)
-        .withOptionalArg()
-        .ofType(Boolean.class)
-        .defaultsTo(true)
-        .describedAs(
-            "whether or not to generate mutations in static initializers");
 
     this.detectInlinedCode = parserAccepts(USE_INLINED_CODE_DETECTION)
         .withOptionalArg()
@@ -222,7 +233,14 @@ public class OptionsParser {
         .ofType(String.class)
         .withValuesSeparatedBy(',')
         .describedAs(
-            "comma separated list of globs for classes to exclude when looking for both mutation target and tests");
+            "comma separated list of globs for classes to exclude when mutating");
+
+    this.excludedTestClassesSpec = parserAccepts(EXCLUDED_TEST_CLASSES)
+        .withRequiredArg()
+        .ofType(String.class)
+        .withValuesSeparatedBy(',')
+        .describedAs(
+            "comma separated list of globs of test classes to exclude");
 
     this.verboseSpec = parserAccepts(VERBOSE).withOptionalArg()
         .ofType(Boolean.class).defaultsTo(true)
@@ -235,9 +253,13 @@ public class OptionsParser {
         .describedAs(
             "whether or not to dump per test line coverage data to disk");
 
+    this.useClasspathJarSpec = parserAccepts(USE_CLASSPATH_JAR)
+        .withOptionalArg().ofType(Boolean.class).defaultsTo(false)
+        .describedAs("support large classpaths by creating a classpath jar");
+    
     this.includeLaunchClasspathSpec = parserAccepts(INCLUDE_LAUNCH_CLASSPATH)
         .withOptionalArg().ofType(Boolean.class).defaultsTo(true)
-        .describedAs("whether or not to analyse launch classpath");
+        .describedAs("whether or not to analyse launch classpath");    
 
     this.outputFormatSpec = parserAccepts(OUTPUT_FORMATS)
         .withRequiredArg()
@@ -269,9 +291,20 @@ public class OptionsParser {
         .ofType(String.class).withValuesSeparatedBy(',')
         .describedAs("TestNG groups/JUnit categories to include");
 
+    this.includedTestMethodsSpec = parserAccepts(INCLUDED_TEST_METHODS).withRequiredArg()
+            .ofType(String.class).withValuesSeparatedBy(',')
+            .describedAs("Test methods that should be included for challenging the mutants");
+
     this.excludedGroupsSpec = parserAccepts(EXCLUDED_GROUPS).withRequiredArg()
         .ofType(String.class).withValuesSeparatedBy(',')
         .describedAs("TestNG groups/JUnit categories to include");
+
+    this.fullMutationMatrixSpec = parserAccepts(FULL_MUTATION_MATRIX)
+        .withRequiredArg()
+        .ofType(Boolean.class)
+        .describedAs(
+            "Whether to create a full mutation matrix")
+        .defaultsTo(FULL_MUTATION_MATRIX.getDefault(Boolean.class));
 
     this.mutationUnitSizeSpec = parserAccepts(MUTATION_UNIT_SIZE)
         .withRequiredArg()
@@ -292,7 +325,7 @@ public class OptionsParser {
         .withRequiredArg().ofType(Integer.class)
         .describedAs("Mutation score below which to throw an error")
         .defaultsTo(MUTATION_THRESHOLD.getDefault(Integer.class));
-    
+
     this.maxSurvivingSpec = parserAccepts(MAX_SURVIVING)
         .withRequiredArg().ofType(Integer.class)
         .describedAs("Maximum number of surviving mutants to allow without throwing an error")
@@ -313,7 +346,6 @@ public class OptionsParser {
     this.pluginPropertiesSpec = parserAccepts(PLUGIN_CONFIGURATION)
         .withRequiredArg().ofType(KeyValuePair.class)
         .describedAs("custom plugin properties");
-
   }
 
   private OptionSpecBuilder parserAccepts(final ConfigOption option) {
@@ -343,18 +375,19 @@ public class OptionsParser {
    */
   private ParseResult parseCommandLine(final ReportOptions data,
       final OptionSet userArgs) {
+    data.setTestPlugin(userArgs.valueOf(this.testPluginSpec));
     data.setReportDir(userArgs.valueOf(this.reportDirSpec));
-    data.setTargetClasses(FCollection.map(
-        this.targetClassesSpec.values(userArgs), Glob.toGlobPredicate()));
+    data.setTargetClasses(this.targetClassesSpec.values(userArgs));
     data.setTargetTests(FCollection.map(this.targetTestsSpec.values(userArgs),
         Glob.toGlobPredicate()));
     data.setSourceDirs(this.sourceDirSpec.values(userArgs));
     data.setMutators(this.mutators.values(userArgs));
+    data.setFeatures(this.features.values(userArgs));
     data.setDependencyAnalysisMaxDistance(this.depth.value(userArgs));
     data.addChildJVMArgs(this.jvmArgs.values(userArgs));
+    
+    data.setFullMutationMatrix(this.fullMutationMatrixSpec.value(userArgs));
 
-    data.setMutateStaticInitializers(userArgs.has(this.mutateStatics)
-        && userArgs.valueOf(this.mutateStatics));
 
     data.setDetectInlinedCode(userArgs.has(this.detectInlinedCode)
         && userArgs.valueOf(this.detectInlinedCode));
@@ -362,17 +395,18 @@ public class OptionsParser {
     data.setIncludeLaunchClasspath(userArgs
         .valueOf(this.includeLaunchClasspathSpec));
 
+    data.setUseClasspathJar(userArgs.valueOf(useClasspathJarSpec));
+    
     data.setShouldCreateTimestampedReports(userArgs
         .valueOf(this.timestampedReportsSpec));
     data.setNumberOfThreads(this.threadsSpec.value(userArgs));
     data.setTimeoutFactor(this.timeoutFactorSpec.value(userArgs));
     data.setTimeoutConstant(this.timeoutConstSpec.value(userArgs));
     data.setLoggingClasses(this.avoidCallsSpec.values(userArgs));
-    data.setExcludedMethods(FCollection.map(
-        this.excludedMethodsSpec.values(userArgs), Glob.toGlobPredicate()));
-    data.setExcludedClasses(FCollection.map(
-        this.excludedClassesSpec.values(userArgs), Glob.toGlobPredicate()));
-    data.setMaxMutationsPerClass(this.maxMutationsPerClassSpec.value(userArgs));
+    data.setExcludedMethods(this.excludedMethodsSpec.values(userArgs));
+    data.setExcludedClasses(this.excludedClassesSpec.values(userArgs));
+    data.setExcludedTestClasses(FCollection.map(
+        this.excludedTestClassesSpec.values(userArgs), Glob.toGlobPredicate()));
     data.setVerbose(userArgs.has(this.verboseSpec)
         && userArgs.valueOf(this.verboseSpec));
 
@@ -396,6 +430,8 @@ public class OptionsParser {
     setClassPath(userArgs, data);
 
     setTestGroups(userArgs, data);
+
+    data.setIncludedTestMethods(this.includedTestMethodsSpec.values(userArgs));
     data.setJavaExecutable(this.javaExecutable.value(userArgs));
 
     if (userArgs.has("?")) {
@@ -407,7 +443,7 @@ public class OptionsParser {
 
   private void setClassPath(final OptionSet userArgs, final ReportOptions data) {
 
-    final List<String> elements = new ArrayList<String>();
+    final List<String> elements = new ArrayList<>();
     if (data.isIncludeLaunchClasspath()) {
       elements.addAll(ClassPath.getClassPathElementsAsPaths());
     } else {
@@ -415,25 +451,14 @@ public class OptionsParser {
           ClassPath.getClassPathElementsAsPaths(), this.dependencyFilter));
     }
     if (userArgs.has(this.classPathFile)) {
-      BufferedReader classPathFileBR = null;
-      try {
-        classPathFileBR = new BufferedReader(new FileReader(userArgs.valueOf(this.classPathFile).getAbsoluteFile()));
+      try (BufferedReader classPathFileBR = new BufferedReader(new FileReader(userArgs.valueOf(this.classPathFile).getAbsoluteFile()))) {
         String element;
         while ((element = classPathFileBR.readLine()) != null) {
           elements.add(element);
         }
-      } catch (IOException ioe) {
+      } catch (final IOException ioe) {
         LOG.warning("Unable to read class path file:" + userArgs.valueOf(this.classPathFile).getAbsolutePath() + " - "
                 + ioe.getMessage());
-      } finally {
-        try {
-          if (classPathFileBR != null) {
-            classPathFileBR.close();
-          }
-        } catch (IOException ex) {
-          LOG.warning("Error while closing the class path file's buffered reader:" + userArgs.valueOf(this.classPathFile)
-                  .getAbsolutePath() + " - " + ex.getMessage());
-        }
       }
     }
     elements.addAll(userArgs.valuesOf(this.additionalClassPathSpec));
@@ -449,8 +474,8 @@ public class OptionsParser {
   }
 
   private Properties listToProperties(List<KeyValuePair> kvps) {
-    Properties p = new Properties();
-    for (KeyValuePair kvp : kvps) {
+    final Properties p = new Properties();
+    for (final KeyValuePair kvp : kvps) {
       p.put(kvp.key, kvp.value);
     }
     return p;

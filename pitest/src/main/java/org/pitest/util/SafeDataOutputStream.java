@@ -14,9 +14,13 @@
  */
 package org.pitest.util;
 
+import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.ObjectOutput;
+import java.io.ObjectOutputStream;
 import java.io.OutputStream;
+import java.io.Serializable;
 
 public class SafeDataOutputStream {
 
@@ -37,16 +41,28 @@ public class SafeDataOutputStream {
   public void writeString(final String str) {
     try {
       final byte[] data = str.getBytes("UTF-8");
-      this.dos.writeInt(data.length);
-      this.dos.write(data);
-
+      writeBytes(data);
     } catch (final IOException e) {
       throw Unchecked.translateCheckedException(e);
     }
   }
 
-  public <T> void write(final T value) {
-    writeString(IsolationUtils.toXml(value));
+
+  public void writeBytes(final byte[] data) {
+    try {
+      this.dos.writeInt(data.length);
+      this.dos.write(data);
+    } catch (final IOException e) {
+      throw Unchecked.translateCheckedException(e);
+    }
+  }
+
+  public <T extends Serializable> void write(final T value) {
+    try {
+      writeBytes(toByteArray(value));
+    } catch (final IOException e) {
+      throw Unchecked.translateCheckedException(e);
+    }
   }
 
   public void flush() {
@@ -88,5 +104,15 @@ public class SafeDataOutputStream {
       throw Unchecked.translateCheckedException(e);
     }
   }
+
+  private byte[] toByteArray(Serializable value) throws IOException {
+    try (ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+      final ObjectOutput out = new ObjectOutputStream(bos);
+      out.writeObject(value);
+      out.flush();
+      return bos.toByteArray();
+    }
+  }
+
 
 }

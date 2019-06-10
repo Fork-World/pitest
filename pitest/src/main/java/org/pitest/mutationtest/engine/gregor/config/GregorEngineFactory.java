@@ -15,53 +15,33 @@
 package org.pitest.mutationtest.engine.gregor.config;
 
 import java.util.Collection;
+import java.util.function.Predicate;
 
-import org.pitest.functional.F;
-import org.pitest.functional.predicate.Predicate;
 import org.pitest.functional.prelude.Prelude;
+import org.pitest.mutationtest.EngineArguments;
 import org.pitest.mutationtest.MutationEngineFactory;
 import org.pitest.mutationtest.engine.MutationEngine;
 import org.pitest.mutationtest.engine.gregor.GregorMutationEngine;
 import org.pitest.mutationtest.engine.gregor.MethodInfo;
 import org.pitest.mutationtest.engine.gregor.MethodMutatorFactory;
-import org.pitest.mutationtest.engine.gregor.inlinedcode.InlinedCodeFilter;
-import org.pitest.mutationtest.engine.gregor.inlinedcode.InlinedFinallyBlockDetector;
-import org.pitest.mutationtest.engine.gregor.inlinedcode.NoInlinedCodeDetection;
+import org.pitest.util.Glob;
 
 public final class GregorEngineFactory implements MutationEngineFactory {
 
   @Override
-  public MutationEngine createEngine(final boolean mutateStaticInitializers,
-      final Predicate<String> excludedMethods,
-      final Collection<String> loggingClasses,
-      final Collection<String> mutators, final boolean detectInlinedCode) {
-    return createEngineWithMutators(mutateStaticInitializers, excludedMethods,
-        loggingClasses, createMutatorListFromArrayOrUseDefaults(mutators),
-        detectInlinedCode);
+  public MutationEngine createEngine(EngineArguments args) {
+    return createEngineWithMutators(args.excludedMethods(),
+           createMutatorListFromArrayOrUseDefaults(args.mutators()));
   }
 
   public MutationEngine createEngineWithMutators(
-      final boolean mutateStaticInitializers,
-      final Predicate<String> excludedMethods,
-      final Collection<String> loggingClasses,
-      final Collection<? extends MethodMutatorFactory> mutators,
-      final boolean detectInlinedCode) {
+      final Collection<String> excludedMethods,
+      final Collection<? extends MethodMutatorFactory> mutators) {
 
-    final Predicate<MethodInfo> filter = pickFilter(mutateStaticInitializers,
-        Prelude.not(stringToMethodInfoPredicate(excludedMethods)));
+    final Predicate<MethodInfo> filter = Prelude.not(stringToMethodInfoPredicate(excludedMethods));
     final DefaultMutationEngineConfiguration config = new DefaultMutationEngineConfiguration(
-        filter, loggingClasses, mutators,
-        inlinedCodeDetector(detectInlinedCode));
+        filter, mutators);
     return new GregorMutationEngine(config);
-  }
-
-  private static InlinedCodeFilter inlinedCodeDetector(
-      final boolean detectInlinedCode) {
-    if (detectInlinedCode) {
-      return new InlinedFinallyBlockDetector();
-    } else {
-      return new NoInlinedCodeDetection();
-    }
   }
 
   private static Collection<? extends MethodMutatorFactory> createMutatorListFromArrayOrUseDefaults(
@@ -74,38 +54,10 @@ public final class GregorEngineFactory implements MutationEngineFactory {
 
   }
 
-  @SuppressWarnings("unchecked")
-  private static Predicate<MethodInfo> pickFilter(
-      final boolean mutateStaticInitializers,
-      final Predicate<MethodInfo> excludedMethods) {
-    if (!mutateStaticInitializers) {
-      return Prelude.and(excludedMethods, notStaticInitializer());
-    } else {
-      return excludedMethods;
-    }
-  }
-
-  private static F<MethodInfo, Boolean> stringToMethodInfoPredicate(
-      final Predicate<String> excludedMethods) {
-    return new Predicate<MethodInfo>() {
-
-      @Override
-      public Boolean apply(final MethodInfo a) {
-        return excludedMethods.apply(a.getName());
-      }
-
-    };
-  }
-
-  private static Predicate<MethodInfo> notStaticInitializer() {
-    return new Predicate<MethodInfo>() {
-
-      @Override
-      public Boolean apply(final MethodInfo a) {
-        return !a.isStaticInitializer();
-      }
-
-    };
+  private static Predicate<MethodInfo> stringToMethodInfoPredicate(
+      final Collection<String> excludedMethods) {
+    final Predicate<String> excluded = Prelude.or(Glob.toGlobPredicates(excludedMethods));
+    return a -> excluded.test(a.getName());
   }
 
   @Override

@@ -1,13 +1,13 @@
 package org.pitest.classpath;
 
-import static org.pitest.functional.FCollection.flatMap;
-import static org.pitest.functional.prelude.Prelude.and;
-import static org.pitest.functional.prelude.Prelude.not;
-
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.pitest.classinfo.ClassInfo;
 import org.pitest.classinfo.ClassInfoSource;
@@ -15,10 +15,8 @@ import org.pitest.classinfo.ClassName;
 import org.pitest.classinfo.NameToClassInfo;
 import org.pitest.classinfo.Repository;
 import org.pitest.classinfo.TestToClassMapper;
-import org.pitest.functional.F;
 import org.pitest.functional.FCollection;
-import org.pitest.functional.Option;
-import org.pitest.testapi.TestClassIdentifier;
+import org.pitest.functional.Streams;
 
 /**
  * Provides access to code and tests on the classpath
@@ -27,37 +25,35 @@ public class CodeSource implements ClassInfoSource {
 
   private final ProjectClassPaths   classPath;
   private final Repository          classRepository;
-  private final TestClassIdentifier testIdentifier;
 
-  public CodeSource(final ProjectClassPaths classPath,
-      final TestClassIdentifier testIdentifier) {
+  public CodeSource(final ProjectClassPaths classPath) {
     this(classPath, new Repository(new ClassPathByteArraySource(
-        classPath.getClassPath())), testIdentifier);
+        classPath.getClassPath())));
   }
 
   CodeSource(final ProjectClassPaths classPath,
-      final Repository classRepository, final TestClassIdentifier testIdentifier) {
+      final Repository classRepository) {
     this.classPath = classPath;
     this.classRepository = classRepository;
-    this.testIdentifier = testIdentifier;
   }
 
   public Collection<ClassInfo> getCode() {
-    return FCollection.flatMap(this.classPath.code(), nameToClassInfo())
-        .filter(not(isWithinATestClass()));
+    return this.classPath.code().stream()
+        .flatMap(nameToClassInfo())
+        .collect(Collectors.toList());
   }
 
   public Set<ClassName> getCodeUnderTestNames() {
-    final Set<ClassName> codeClasses = new HashSet<ClassName>();
+    final Set<ClassName> codeClasses = new HashSet<>();
     FCollection.mapTo(getCode(), ClassInfo.toClassName(), codeClasses);
     return codeClasses;
   }
 
-  @SuppressWarnings("unchecked")
   public List<ClassInfo> getTests() {
-    return flatMap(this.classPath.test(), nameToClassInfo()).filter(
-        and(isWithinATestClass(), isIncludedClass(),
-            not(ClassInfo.matchIfAbstract())));
+    return this.classPath.test().stream()
+        .flatMap(nameToClassInfo())
+        .filter(ClassInfo.matchIfAbstract().negate())
+        .collect(Collectors.toList());
   }
 
   public ClassPath getClassPath() {
@@ -68,49 +64,30 @@ public class CodeSource implements ClassInfoSource {
     return this.classPath;
   }
 
-  public Option<ClassName> findTestee(final String className) {
+  public Optional<ClassName> findTestee(final String className) {
     final TestToClassMapper mapper = new TestToClassMapper(this.classRepository);
     return mapper.findTestee(className);
   }
 
   public Collection<ClassInfo> getClassInfo(final Collection<ClassName> classes) {
-    return FCollection.flatMap(classes, nameToClassInfo());
+    return classes.stream()
+        .flatMap(nameToClassInfo())
+        .collect(Collectors.toList());
   }
 
   // not used but keep to allow plugins to query bytecode
-  public Option<byte[]> fetchClassBytes(final ClassName clazz) {
+  public Optional<byte[]> fetchClassBytes(final ClassName clazz) {
     return this.classRepository.querySource(clazz);
   }
 
   @Override
-  public Option<ClassInfo> fetchClass(final ClassName clazz) {
+  public Optional<ClassInfo> fetchClass(final ClassName clazz) {
     return this.classRepository.fetchClass(clazz);
   }
 
-  private F<ClassName, Option<ClassInfo>> nameToClassInfo() {
-    return new NameToClassInfo(this.classRepository);
+  private Function<ClassName, Stream<ClassInfo>> nameToClassInfo() {
+    return new NameToClassInfo(this.classRepository)
+        .andThen(opt -> Streams.fromOptional(opt));
   }
 
-  private F<ClassInfo, Boolean> isWithinATestClass() {
-    return new F<ClassInfo, Boolean>() {
-
-      @Override
-      public Boolean apply(final ClassInfo a) {
-        return CodeSource.this.testIdentifier.isATestClass(a);
-      }
-
-    };
-
-  }
-
-  private F<ClassInfo, Boolean> isIncludedClass() {
-    return new F<ClassInfo, Boolean>() {
-      @Override
-      public Boolean apply(final ClassInfo a) {
-        return CodeSource.this.testIdentifier.isIncluded(a);
-      }
-
-    };
-
-  }
 }

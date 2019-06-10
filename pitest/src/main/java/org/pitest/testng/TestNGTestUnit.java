@@ -14,17 +14,14 @@
  */
 package org.pitest.testng;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.Callable;
 
 import org.pitest.testapi.AbstractTestUnit;
 import org.pitest.testapi.ResultCollector;
 import org.pitest.testapi.TestGroupConfig;
-import org.pitest.testapi.foreignclassloader.Events;
-import org.pitest.util.ClassLoaderDetectionStrategy;
-import org.pitest.util.IsolationUtils;
-import org.pitest.util.Unchecked;
 import org.testng.IInvokedMethod;
 import org.testng.IInvokedMethodListener;
 import org.testng.ITestContext;
@@ -33,6 +30,7 @@ import org.testng.ITestResult;
 import org.testng.SkipException;
 import org.testng.TestNG;
 import org.testng.xml.XmlClass;
+import org.testng.xml.XmlInclude;
 import org.testng.xml.XmlSuite;
 import org.testng.xml.XmlTest;
 
@@ -47,54 +45,34 @@ public class TestNGTestUnit extends AbstractTestUnit {
   // needs to be static as jmockit assumes only a single instance per jvm
   private static final TestNG                TESTNG = new TestNG(false);
   private static final MutableTestListenerWrapper LISTENER = new MutableTestListenerWrapper();
-  
+
   static {
     TESTNG.addListener(LISTENER);
     TESTNG.addInvokedMethodListener(new FailFast(LISTENER));
   }
-  
-  private final ClassLoaderDetectionStrategy classloaderDetection;
+
   private final Class<?>                     clazz;
   private final TestGroupConfig              config;
- 
-  
+  private final Collection<String> includedTestMethods;
+
+
+
   public TestNGTestUnit(
-      final ClassLoaderDetectionStrategy classloaderDetection,
-      final Class<?> clazz, final TestGroupConfig config) {
+          final Class<?> clazz, final TestGroupConfig config, Collection<String> includedTestMethods) {
     super(new org.pitest.testapi.Description("_", clazz));
     this.clazz = clazz;
-    this.classloaderDetection = classloaderDetection;
     this.config = config;
-  }
-
-  public TestNGTestUnit(final Class<?> clazz, final TestGroupConfig config) {
-    this(IsolationUtils.loaderDetectionStrategy(), clazz, config);
+    this.includedTestMethods = includedTestMethods;
   }
 
   @Override
-  public void execute(final ClassLoader loader, final ResultCollector rc) {
+  public void execute(final ResultCollector rc) {
     synchronized (TESTNG) {
-      if (this.classloaderDetection.fromDifferentLoader(this.clazz, loader)) {
-        executeInForeignLoader(rc, loader);
-      } else {
         executeInCurrentLoader(rc);
-      }
     }
   }
 
-  private void executeInForeignLoader(ResultCollector rc, ClassLoader loader) {
-    @SuppressWarnings("unchecked")
-    Callable<List<String>> e = (Callable<List<String>>) IsolationUtils
-    .cloneForLoader(new ForeignClassLoaderTestNGExecutor(createSuite()),
-        loader);
-    try {
-      List<String> q = e.call();
-      Events.applyEvents(q, rc, this.getDescription());
-    } catch (Exception ex) {
-      throw Unchecked.translateCheckedException(ex);
-    }
 
-  }
 
   private void executeInCurrentLoader(final ResultCollector rc) {
     final TestNGAdapter listener = new TestNGAdapter(this.clazz,
@@ -122,6 +100,16 @@ public class TestNGTestUnit extends AbstractTestUnit {
     test.setName(this.clazz.getName());
     final XmlClass xclass = new XmlClass(this.clazz.getName());
     test.setXmlClasses(Collections.singletonList(xclass));
+
+    if (!this.includedTestMethods.isEmpty()) {
+      final List<XmlInclude> xmlIncludedTestMethods = new ArrayList<>();
+      for (final String includedTestMethod : this.includedTestMethods) {
+        final XmlInclude includedMethod = new XmlInclude(includedTestMethod);
+        xmlIncludedTestMethods.add(includedMethod);
+      }
+      xclass.setIncludedMethods(xmlIncludedTestMethods);
+    }
+
     if (!this.config.getExcludedGroups().isEmpty()) {
       suite.setExcludedGroups(this.config.getExcludedGroups());
     }
@@ -136,63 +124,71 @@ public class TestNGTestUnit extends AbstractTestUnit {
 }
 
 class FailFast implements IInvokedMethodListener {
-  
+
   private final FailureTracker listener;
-  
+
   FailFast(FailureTracker listener) {
     this.listener = listener;
   }
 
   @Override
   public void beforeInvocation(IInvokedMethod method, ITestResult testResult) {
-    if (listener.hasHadFailure()) {
+    if (this.listener.hasHadFailure()) {
       throw new SkipException("Skipping");
     }
   }
 
   @Override
   public void afterInvocation(IInvokedMethod method, ITestResult testResult) {
- 
+
   }
-  
+
 }
 
 class MutableTestListenerWrapper implements ITestListener, FailureTracker {
   private TestNGAdapter child;
-  
+
   public void setChild(TestNGAdapter child) {
     this.child = child;
   }
 
+  @Override
   public boolean hasHadFailure() {
-    return child.hasHadFailure();
+    return this.child.hasHadFailure();
   }
 
+  @Override
   public void onTestStart(ITestResult result) {
-    child.onTestStart(result);
+    this.child.onTestStart(result);
   }
 
+  @Override
   public void onTestSuccess(ITestResult result) {
-    child.onTestSuccess(result);
+    this.child.onTestSuccess(result);
   }
 
+  @Override
   public void onTestFailure(ITestResult result) {
-    child.onTestFailure(result);
+    this.child.onTestFailure(result);
   }
 
+  @Override
   public void onTestSkipped(ITestResult result) {
-    child.onTestSkipped(result);
+    this.child.onTestSkipped(result);
   }
 
+  @Override
   public void onTestFailedButWithinSuccessPercentage(ITestResult result) {
-    child.onTestFailedButWithinSuccessPercentage(result);
+    this.child.onTestFailedButWithinSuccessPercentage(result);
   }
 
+  @Override
   public void onStart(ITestContext context) {
-    child.onStart(context);
+    this.child.onStart(context);
   }
 
+  @Override
   public void onFinish(ITestContext context) {
-    child.onFinish(context);
+    this.child.onFinish(context);
   }
 }

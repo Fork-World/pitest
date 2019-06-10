@@ -11,10 +11,15 @@ import java.util.Collection;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 import org.pitest.classinfo.ClassByteArraySource;
 import org.pitest.classinfo.ClassName;
+import org.pitest.mutationtest.EngineArguments;
+import org.pitest.mutationtest.MutationEngineFactory;
 import org.pitest.mutationtest.TimeoutLengthStrategy;
+import org.pitest.mutationtest.config.MinionSettings;
+import org.pitest.mutationtest.config.TestPluginArguments;
 import org.pitest.mutationtest.engine.Mutater;
 import org.pitest.mutationtest.engine.MutationDetails;
 import org.pitest.mutationtest.engine.MutationEngine;
@@ -46,6 +51,9 @@ public class MutationTestMinionTest {
   @Mock
   private Mutater                     mutater;
 
+  @Mock
+  private MinionSettings              settings;
+
   private MinionArguments              args;
 
   private Collection<MutationDetails> mutations;
@@ -55,17 +63,22 @@ public class MutationTestMinionTest {
   @Before
   public void setup() {
     MockitoAnnotations.initMocks(this);
-    this.mutations = new ArrayList<MutationDetails>();
-    this.tests = new ArrayList<ClassName>();
+    this.mutations = new ArrayList<>();
+    this.tests = new ArrayList<>();
 
-    this.args = new MinionArguments(this.mutations, this.tests, this.engine,
-        this.timeoutStrategy, false, this.testConfig);
+    this.args = new MinionArguments(this.mutations, this.tests,  "anEgine", EngineArguments.arguments(),
+        this.timeoutStrategy, false, false, TestPluginArguments.defaults());
 
     when(this.is.read(MinionArguments.class)).thenReturn(this.args);
     when(this.engine.createMutator(any(ClassByteArraySource.class)))
     .thenReturn(this.mutater);
 
-    this.testee = new MutationTestMinion(this.is, this.reporter);
+    final MutationEngineFactory factory = Mockito.mock(MutationEngineFactory.class);
+    when(factory.createEngine(any(EngineArguments.class))).thenReturn(this.engine);
+
+    when(this.settings.createEngine(any(String.class))).thenReturn(factory);
+
+    this.testee = new MutationTestMinion(this.settings, this.is, this.reporter);
   }
 
   @Test
@@ -77,7 +90,7 @@ public class MutationTestMinionTest {
   @Test
   public void shouldReportErrorWhenOneOccursDuringAnalysis() {
     this.mutations.add(new MutationDetails(aMutationId().withIndex(0)
-        .withMutator("foo").build(), null, null, 0, 0));
+        .withMutator("foo").build(), "file", "desc", 0, 0));
     when(this.mutater.getMutation(any(MutationIdentifier.class))).thenThrow(
         new PitError("foo"));
     this.testee.run();

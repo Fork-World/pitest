@@ -16,16 +16,16 @@ package org.pitest.mutationtest;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiFunction;
 
-import org.pitest.functional.F2;
 import org.pitest.functional.FCollection;
 
 public class MetaDataExtractor implements MutationResultListener {
 
-  private final List<MutationResult> data = new ArrayList<MutationResult>();
+  private final List<MutationResult> data = new ArrayList<>();
 
   public List<DetectionStatus> getDetectionStatus() {
-    final List<DetectionStatus> dss = new ArrayList<DetectionStatus>();
+    final List<DetectionStatus> dss = new ArrayList<>();
     for (final MutationResult each : this.data) {
       dss.add(each.getStatus());
     }
@@ -33,7 +33,7 @@ public class MetaDataExtractor implements MutationResultListener {
   }
 
   public List<Integer> getLineNumbers() {
-    final List<Integer> dss = new ArrayList<Integer>();
+    final List<Integer> dss = new ArrayList<>();
     for (final MutationResult each : this.data) {
       dss.add(each.getDetails().getLineNumber());
     }
@@ -41,13 +41,7 @@ public class MetaDataExtractor implements MutationResultListener {
   }
 
   public int getNumberOfTestsRun() {
-    final F2<Integer, MutationResult, Integer> sum = new F2<Integer, MutationResult, Integer>() {
-      @Override
-      public Integer apply(final Integer a, final MutationResult b) {
-        return a + b.getNumberOfTestsRun();
-      }
-
-    };
+    final BiFunction<Integer, MutationResult, Integer> sum = (a, b) -> a + b.getNumberOfTestsRun();
     return FCollection.fold(sum, 0, this.data);
   }
 
@@ -66,5 +60,9 @@ public class MetaDataExtractor implements MutationResultListener {
     // TODO Auto-generated method stub
 
   }
+  
+  public List<MutationResult> getData() {
+    return data;
+}
 
 }

@@ -43,7 +43,7 @@ public class DefaultCoverageExporter implements CoverageExporter {
   }
 
   private void writeLineCoverage(final BlockCoverage each, final Writer out) {
-    Location l = each.getBlock().getLocation();
+    final Location l = each.getBlock().getLocation();
     write(
         out,
         "<block classname='" + l.getClassName().asJavaName() + "'"
@@ -51,10 +51,10 @@ public class DefaultCoverageExporter implements CoverageExporter {
             + StringUtil.escapeBasicHtmlChars(l.getMethodName().name()) + StringUtil.escapeBasicHtmlChars(l.getMethodDesc())
             + "' number='" + each.getBlock().getBlock() + "'>");
     write(out, "<tests>\n");
-    final List<String> ts = new ArrayList<String>(each.getTests());
+    final List<String> ts = new ArrayList<>(each.getTests());
     Collections.sort(ts);
     for (final String test : ts) {
-      write(out, "<test name='" + test + "'/>\n");
+      write(out, "<test name='" + StringUtil.escapeBasicHtmlChars(test) + "'/>\n");
     }
     write(out, "</tests>\n");
     write(out, "</block>\n");

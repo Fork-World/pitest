@@ -24,14 +24,16 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.logging.Logger;
 import java.util.zip.ZipException;
 
-import org.pitest.functional.F;
 import org.pitest.functional.FCollection;
-import org.pitest.functional.predicate.Predicate;
 import org.pitest.util.Log;
+import org.pitest.util.ManifestUtils;
 import org.pitest.util.PitError;
 import org.pitest.util.StreamUtil;
 
@@ -49,12 +51,12 @@ public class ClassPath {
     this(Arrays.asList(roots));
   }
 
-  public ClassPath(List<ClassPathRoot> roots) {
-    this.root = new CompoundClassPathRoot(roots);
-  }
-
   public ClassPath(final Collection<File> files) {
     this(createRoots(FCollection.filter(files, exists())));
+  }
+
+  ClassPath(List<ClassPathRoot> roots) {
+    this.root = new CompoundClassPathRoot(roots);
   }
 
   public Collection<String> classNames() {
@@ -65,7 +67,7 @@ public class ClassPath {
   private static List<ClassPathRoot> createRoots(final Collection<File> files) {
     File lastFile = null;
     try {
-      final List<ClassPathRoot> rs = new ArrayList<ClassPathRoot>();
+      final List<ClassPathRoot> rs = new ArrayList<>();
 
       for (final File f : files) {
         lastFile = f;
@@ -94,15 +96,13 @@ public class ClassPath {
   }
 
   public byte[] getClassData(final String classname) throws IOException {
-    InputStream is = this.root.getData(classname);
-    if (is != null) {
-      try {
+    try (InputStream is = this.root.getData(classname)) {
+      if (is != null) {
         return StreamUtil.streamToByteArray(is);
-      } finally {
-        is.close();
+      } else {
+        return null;
       }
     }
-    return null;
   }
 
   public URL findResource(final String name) {
@@ -114,63 +114,61 @@ public class ClassPath {
   }
 
   public static Collection<String> getClassPathElementsAsPaths() {
-    final Set<String> filesAsString = new LinkedHashSet<String>();
-    FCollection.mapTo(getClassPathElementsAsFiles(), fileToString(),
+    final Set<String> filesAsString = new LinkedHashSet<>();
+    FCollection.mapTo(getClassPathElementsAsFiles(), file -> file.getPath(),
         filesAsString);
     return filesAsString;
   }
 
 
   public static Collection<File> getClassPathElementsAsFiles() {
-    final Set<File> us = new LinkedHashSet<File>();
+    final Set<File> us = new LinkedHashSet<>();
     FCollection.mapTo(getClassPathElementsAsAre(), stringToCanonicalFile(), us);
+    
+    addEntriesFromClasspathManifest(us);
     return us;
   }
 
+  /**
+   * Because classpaths can become longer than the OS supports pitest creates temporary jar files and places the classpath
+   * in the manifest where there is no size limit.
+   * 
+   * We must therefore parse them out again here. 
+   * 
+   * @param elements existing elements
+   */
+  private static void addEntriesFromClasspathManifest(final Set<File> elements) {
+    Optional<File> maybeJar = elements.stream().filter( f -> f.getName().startsWith("classpath") && f.getName().endsWith(".jar"))
+    .findFirst();
+    maybeJar.ifPresent(file -> elements.addAll(ManifestUtils.readClasspathManifest(file)));
+  }
 
   public Collection<String> findClasses(final Predicate<String> nameFilter) {
     return FCollection.filter(classNames(), nameFilter);
   }
 
   public String getLocalClassPath() {
-    return this.root.cacheLocation().value();
+    return this.root.cacheLocation().get();
   }
 
   public ClassPath getComponent(final Predicate<ClassPathRoot> predicate) {
     return new ClassPath(FCollection.filter(this.root, predicate).toArray(
         new ClassPathRoot[0]));
   }
-  
-  private static F<File, Boolean> exists() {
-    return new F<File, Boolean>() {
-      @Override
-      public Boolean apply(final File a) {
-        return a.exists() && a.canRead();
-      }
-    };
+
+  private static Predicate<File> exists() {
+    return a -> a.exists() && a.canRead();
   }
 
-  private static F<File, String> fileToString() {
-    return new F<File, String>() {
-      @Override
-      public String apply(File file) {
-        return file.getPath();
-      }
-    };
-  }
-  
-  private static F<String, File> stringToCanonicalFile() {
-    return new F<String, File>() {
-      @Override
-      public File apply(String fileAsString) {
+  private static Function<String, File> stringToCanonicalFile() {
+    return fileAsString -> {
         try {
           return new File(fileAsString).getCanonicalFile();
         } catch (final IOException ex) {
           throw new PitError("Error transforming classpath element "
               + fileAsString, ex);
         }
-      }
-    };
+      };
   }
 
   /** FIXME move somewhere common */
@@ -180,7 +178,7 @@ public class ClassPath {
     if (classPath != null) {
       return Arrays.asList(classPath.split(separator));
     } else {
-      return new ArrayList<String>();
+      return new ArrayList<>();
     }
 
   }

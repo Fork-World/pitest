@@ -10,15 +10,16 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 
-import org.pitest.functional.Option;
+import org.pitest.functional.FCollection;
+import java.util.Optional;
 
 public class CompoundClassPathRoot implements ClassPathRoot,
     Iterable<ClassPathRoot> {
 
-  private final List<ClassPathRoot> roots = new ArrayList<ClassPathRoot>();
+  private final List<ClassPathRoot> roots = new ArrayList<>();
 
   public CompoundClassPathRoot(final List<ClassPathRoot> roots) {
-    this.roots.addAll(roots);
+    this.roots.addAll(wrapToAvoidIOOperations(roots));
   }
 
   @Override
@@ -34,7 +35,7 @@ public class CompoundClassPathRoot implements ClassPathRoot,
 
   @Override
   public Collection<String> classNames() {
-    final List<String> arrayList = new ArrayList<String>();
+    final List<String> arrayList = new ArrayList<>();
     for (final ClassPathRoot root : this.roots) {
       arrayList.addAll(root.classNames());
     }
@@ -61,21 +62,27 @@ public class CompoundClassPathRoot implements ClassPathRoot,
   }
 
   @Override
-  public Option<String> cacheLocation() {
+  public Optional<String> cacheLocation() {
     StringBuilder classpath = new StringBuilder();
     for (final ClassPathRoot each : this.roots) {
-      final Option<String> additional = each.cacheLocation();
-      for (final String path : additional) {
-        classpath = classpath.append(File.pathSeparator + path);
+      final Optional<String> additional = each.cacheLocation();
+      if (additional.isPresent()) {
+        classpath = classpath.append(File.pathSeparator + additional.get());
       }
     }
 
-    return Option.some(classpath.toString());
+    return Optional.ofNullable(classpath.toString());
   }
 
   @Override
   public Iterator<ClassPathRoot> iterator() {
     return this.roots.iterator();
   }
+
+  private  static List<ClassPathRoot> wrapToAvoidIOOperations(
+      List<ClassPathRoot> roots) {
+    return FCollection.map(roots, NameCachingRoot.toCachingRoot());
+  }
+
 
 }

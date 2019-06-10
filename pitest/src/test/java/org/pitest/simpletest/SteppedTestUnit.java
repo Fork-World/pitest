@@ -16,11 +16,10 @@ package org.pitest.simpletest;
 
 import java.util.Collection;
 
-import org.pitest.functional.Option;
+import java.util.Optional;
 import org.pitest.testapi.AbstractTestUnit;
 import org.pitest.testapi.Description;
 import org.pitest.testapi.ResultCollector;
-import org.pitest.util.IsolationUtils;
 
 /**
  * @author henry
@@ -29,34 +28,33 @@ import org.pitest.util.IsolationUtils;
 public class SteppedTestUnit extends AbstractTestUnit {
 
   private final Collection<TestStep>               steps;
-  private final Option<Class<? extends Throwable>> expected;
+  private final Optional<Class<? extends Throwable>> expected;
 
   public SteppedTestUnit(final Description description,
       final Collection<TestStep> steps,
-      final Option<Class<? extends Throwable>> expected) {
+      final Optional<Class<? extends Throwable>> expected) {
     super(description);
     this.steps = steps;
     this.expected = expected;
   }
 
   @Override
-  public void execute(final ClassLoader loader, final ResultCollector rc) {
+  public void execute(final ResultCollector rc) {
     if (!this.steps().isEmpty()) {
-      executeStepsAndReport(loader, rc);
+      executeStepsAndReport(rc);
     } else {
       rc.notifySkipped(this.getDescription());
     }
 
   }
 
-  private void executeStepsAndReport(final ClassLoader loader,
-      final ResultCollector rc) {
+  private void executeStepsAndReport(final ResultCollector rc) {
     rc.notifyStart(this.getDescription());
     Object o = null;
     Throwable tResult = null;
     try {
       for (final TestStep s : this.steps) {
-        o = s.execute(loader, getDescription(), o);
+        o = s.execute(getDescription(), o);
       }
     } catch (final TestExecutionException tee) {
       tResult = tee.getCause();
@@ -64,19 +62,17 @@ public class SteppedTestUnit extends AbstractTestUnit {
       tResult = t;
     }
 
-    tResult = updateResultForExpectations(loader, tResult);
+    tResult = updateResultForExpectations(tResult);
 
     rc.notifyEnd(this.getDescription(), tResult);
   }
 
-  private Throwable updateResultForExpectations(final ClassLoader loader,
-      final Throwable tResult) {
-    if (this.expected.hasSome()) {
+  private Throwable updateResultForExpectations(final Throwable tResult) {
+    if (this.expected.isPresent()) {
       if (tResult == null) {
         return new java.lang.AssertionError("Expected exception "
             + this.expected);
-      } else if (IsolationUtils.convertForClassLoader(loader,
-          this.expected.value()).isAssignableFrom(tResult.getClass())) {
+      } else if (this.expected.get().isAssignableFrom(tResult.getClass())) {
         return null;
       }
     }

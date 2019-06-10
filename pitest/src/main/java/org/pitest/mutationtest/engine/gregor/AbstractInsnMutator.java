@@ -17,7 +17,7 @@ package org.pitest.mutationtest.engine.gregor;
 import java.util.Map;
 
 import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Opcodes;
+import org.pitest.bytecode.ASMVersion;
 import org.pitest.mutationtest.engine.MutationIdentifier;
 
 public abstract class AbstractInsnMutator extends MethodVisitor {
@@ -29,7 +29,7 @@ public abstract class AbstractInsnMutator extends MethodVisitor {
   public AbstractInsnMutator(final MethodMutatorFactory factory,
       final MethodInfo methodInfo, final MutationContext context,
       final MethodVisitor delegateMethodVisitor) {
-    super(Opcodes.ASM5, delegateMethodVisitor);
+    super(ASMVersion.ASM_VERSION, delegateMethodVisitor);
     this.factory = factory;
     this.methodInfo = methodInfo;
     this.context = context;
@@ -46,7 +46,7 @@ public abstract class AbstractInsnMutator extends MethodVisitor {
     }
   }
 
-  private boolean canMutate(final int opcode) {
+  protected boolean canMutate(final int opcode) {
     return getMutations().containsKey(opcode);
   }
 
@@ -65,6 +65,10 @@ public abstract class AbstractInsnMutator extends MethodVisitor {
 
   private void applyUnmutatedInstruction(final int opcode) {
     this.mv.visitInsn(opcode);
+  }
+
+  protected MethodInfo methodInfo() {
+    return this.methodInfo;
   }
 
 }

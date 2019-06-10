@@ -19,7 +19,6 @@ import static org.mockito.Mockito.verify;
 
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -65,20 +64,14 @@ public class TestContainersSendCorrectNotifications {
   }
 
   private static Object uncontainerFactory() {
-    return new ContainerFactory() {
-      @Override
-      public Container getContainer() {
-        return new UnContainer();
-      }
-
-    };
+    return (ContainerFactory) () -> new UnContainer();
   }
 
   @Before
   public void setUp() {
     MockitoAnnotations.initMocks(this);
     this.config = new ConfigurationForTesting();
-    this.pit = new Pitest(Collections.singletonList(this.listener));
+    this.pit = new Pitest(this.listener);
   }
 
   public static class OnePassingTest {

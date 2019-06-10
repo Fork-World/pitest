@@ -58,4 +58,11 @@ public final class Block {
     return this.lines;
   }
 
+  public int getFirstInstruction() {
+    return this.firstInstruction;
+  }
+
+  public int getLastInstruction() {
+    return this.lastInstruction;
+  }
 }

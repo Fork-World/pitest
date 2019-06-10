@@ -14,13 +14,15 @@
  */
 package org.pitest.functional.predicate;
 
+import java.util.function.Predicate;
+
 /**
  * @author henry
  *
  */
 public class False<A> implements Predicate<A> {
 
-  private static final False<?> INSTANCE = new False<Object>();
+  private static final False<?> INSTANCE = new False<>();
 
   @SuppressWarnings("unchecked")
   public static <A> False<A> instance() {
@@ -28,7 +30,7 @@ public class False<A> implements Predicate<A> {
   }
 
   @Override
-  public Boolean apply(final A a) {
+  public boolean test(final A a) {
     return false;
   }
 

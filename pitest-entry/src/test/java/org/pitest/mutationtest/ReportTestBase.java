@@ -10,9 +10,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Properties;
+import java.util.function.Predicate;
 
 import org.junit.Before;
-import org.pitest.classpath.ClassPathRoot;
 import org.pitest.classpath.CodeSource;
 import org.pitest.classpath.PathFilter;
 import org.pitest.classpath.ProjectClassPaths;
@@ -20,12 +20,10 @@ import org.pitest.coverage.CoverageGenerator;
 import org.pitest.coverage.execute.CoverageOptions;
 import org.pitest.coverage.execute.DefaultCoverageGenerator;
 import org.pitest.coverage.export.NullCoverageExporter;
-import org.pitest.functional.predicate.Predicate;
-import org.pitest.functional.predicate.True;
-import org.pitest.junit.JUnitCompatibleConfiguration;
 import org.pitest.mutationtest.config.PluginServices;
 import org.pitest.mutationtest.config.ReportOptions;
 import org.pitest.mutationtest.config.SettingsFactory;
+import org.pitest.mutationtest.config.TestPluginArguments;
 import org.pitest.mutationtest.engine.gregor.config.GregorEngineFactory;
 import org.pitest.mutationtest.incremental.NullHistoryStore;
 import org.pitest.mutationtest.tooling.JarCreatingJarFinder;
@@ -34,7 +32,6 @@ import org.pitest.mutationtest.tooling.MutationStrategies;
 import org.pitest.process.DefaultJavaExecutableLocator;
 import org.pitest.process.JavaAgent;
 import org.pitest.process.LaunchOptions;
-import org.pitest.testapi.Configuration;
 import org.pitest.testapi.TestGroupConfig;
 import org.pitest.util.Glob;
 import org.pitest.util.Timings;
@@ -53,6 +50,8 @@ public abstract class ReportTestBase {
     this.plugins = PluginServices.makeForContextLoader();
     this.data = new ReportOptions();
     this.data.setSourceDirs(Collections.<File> emptyList());
+    this.data.setGroupConfig(new TestGroupConfig());
+    this.data.setTestPlugin("junit");
   }
 
   protected MutationResultListenerFactory listenerFactory() {
@@ -96,26 +95,25 @@ public abstract class ReportTestBase {
   }
 
   protected void createAndRun() {
-    createAndRun(new JUnitCompatibleConfiguration(new TestGroupConfig(), Collections.<String>emptyList()));
+    final SettingsFactory settings = new SettingsFactory(this.data, this.plugins);
+    createAndRun(settings);
   }
 
-  protected void createAndRun(final Configuration configuration) {
+  protected void createAndRun(SettingsFactory settings) {
     final JavaAgent agent = new JarCreatingJarFinder();
     try {
 
-      final CoverageOptions coverageOptions = createCoverageOptions(configuration);
+      final CoverageOptions coverageOptions = createCoverageOptions(settings.createCoverageOptions().getPitConfig());
       final LaunchOptions launchOptions = new LaunchOptions(agent,
           new DefaultJavaExecutableLocator(), this.data.getJvmArgs(),
           new HashMap<String, String>());
 
-      final PathFilter pf = new PathFilter(new True<ClassPathRoot>(),
-          new True<ClassPathRoot>());
+      final PathFilter pf = new PathFilter(p -> true, p -> true);
       final ProjectClassPaths cps = new ProjectClassPaths(
           this.data.getClassPath(), this.data.createClassesFilter(), pf);
 
       final Timings timings = new Timings();
-      final CodeSource code = new CodeSource(cps, coverageOptions
-          .getPitConfig().testClassIdentifier());
+      final CodeSource code = new CodeSource(cps);
 
       final CoverageGenerator coverageDatabase = new DefaultCoverageGenerator(
           null, coverageOptions, launchOptions, code,
@@ -139,8 +137,8 @@ public abstract class ReportTestBase {
     }
   }
 
-  private CoverageOptions createCoverageOptions(Configuration configuration) {
-    return new CoverageOptions(this.data.getTargetClassesFilter(),
+  private CoverageOptions createCoverageOptions(TestPluginArguments configuration) {
+    return new CoverageOptions(this.data.getTargetClasses(),this.data.getExcludedClasses(),
         configuration, this.data.isVerbose(),
         this.data.getDependencyAnalysisMaxDistance());
   }

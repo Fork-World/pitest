@@ -14,10 +14,10 @@ public abstract class StreamUtil {
 
   public static byte[] streamToByteArray(final InputStream in)
       throws IOException {
-    final ByteArrayOutputStream result = new ByteArrayOutputStream();
-    copy(in, result);
-    result.close();
-    return result.toByteArray();
+    try (ByteArrayOutputStream result = new ByteArrayOutputStream()) {
+      copy(in, result);
+      return result.toByteArray();
+    }
   }
 
   public static InputStream copyStream(final InputStream in) throws IOException {
@@ -27,6 +27,10 @@ public abstract class StreamUtil {
 
   private static void copy(final InputStream input, final OutputStream output)
       throws IOException {
+    //Ensure that this thread does not have the "interrupted" flag set, otherwise
+    //the NIO calls will throw an java.nio.channels.ClosedByInterruptException
+    Thread.interrupted();
+
     final ReadableByteChannel src = Channels.newChannel(input);
     final WritableByteChannel dest = Channels.newChannel(output);
     final ByteBuffer buffer = ByteBuffer.allocateDirect(16 * 1024);

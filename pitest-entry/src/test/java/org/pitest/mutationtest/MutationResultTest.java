@@ -15,9 +15,10 @@
 package org.pitest.mutationtest;
 
 import static org.junit.Assert.assertEquals;
-import nl.jqno.equalsverifier.EqualsVerifier;
 
 import org.junit.Test;
+
+import nl.jqno.equalsverifier.EqualsVerifier;
 
 public class MutationResultTest {
 
@@ -32,14 +33,14 @@ public class MutationResultTest {
 
   @Test
   public void shouldNoneWhenNoKillingTest() {
-    this.testee = new MutationResult(null, new MutationStatusTestPair(1,
+    this.testee = new MutationResult(null, MutationStatusTestPair.notAnalysed(1,
         DetectionStatus.TIMED_OUT));
     assertEquals("none", this.testee.getKillingTestDescription());
   }
 
   @Test
   public void shouldReturnStatusDescription() {
-    this.testee = new MutationResult(null, new MutationStatusTestPair(1,
+    this.testee = new MutationResult(null, MutationStatusTestPair.notAnalysed(1,
         DetectionStatus.TIMED_OUT));
     assertEquals("TIMED_OUT", this.testee.getStatusDescription());
   }

@@ -8,13 +8,14 @@ import java.util.Collection;
 import org.pitest.classinfo.ClassName;
 import org.pitest.functional.SideEffect1;
 import org.pitest.functional.prelude.Prelude;
+import org.pitest.mutationtest.EngineArguments;
 import org.pitest.mutationtest.MutationConfig;
 import org.pitest.mutationtest.TimeoutLengthStrategy;
+import org.pitest.mutationtest.config.TestPluginArguments;
 import org.pitest.mutationtest.engine.MutationDetails;
-import org.pitest.mutationtest.execute.MutationTestProcess;
 import org.pitest.mutationtest.execute.MinionArguments;
+import org.pitest.mutationtest.execute.MutationTestProcess;
 import org.pitest.process.ProcessArgs;
-import org.pitest.testapi.Configuration;
 import org.pitest.util.Log;
 import org.pitest.util.SocketFinder;
 
@@ -22,29 +23,37 @@ public class WorkerFactory {
 
   private final String                classPath;
   private final File                  baseDir;
-  private final Configuration         pitConfig;
+  private final TestPluginArguments   pitConfig;
   private final TimeoutLengthStrategy timeoutStrategy;
   private final boolean               verbose;
+  private final boolean               fullMutationMatrix;
   private final MutationConfig        config;
+  private final EngineArguments       args;
 
-  public WorkerFactory(final File baseDir, final Configuration pitConfig,
+  public WorkerFactory(final File baseDir,
+      final TestPluginArguments pitConfig,
       final MutationConfig mutationConfig,
-      final TimeoutLengthStrategy timeoutStrategy, final boolean verbose,
+      final EngineArguments args,
+      final TimeoutLengthStrategy timeoutStrategy,
+      final boolean verbose,
+      final boolean fullMutationMatrix,
       final String classPath) {
     this.pitConfig = pitConfig;
     this.timeoutStrategy = timeoutStrategy;
     this.verbose = verbose;
+    this.fullMutationMatrix = fullMutationMatrix;
     this.classPath = classPath;
     this.baseDir = baseDir;
     this.config = mutationConfig;
+    this.args = args;
   }
 
   public MutationTestProcess createWorker(
       final Collection<MutationDetails> remainingMutations,
       final Collection<ClassName> testClasses) {
     final MinionArguments fileArgs = new MinionArguments(remainingMutations,
-        testClasses, this.config.getEngine(), this.timeoutStrategy,
-        Log.isVerbose(), this.pitConfig);
+        testClasses, this.config.getEngine().getName(), this.args, this.timeoutStrategy,
+        Log.isVerbose(), this.fullMutationMatrix, this.pitConfig);
 
     final ProcessArgs args = ProcessArgs.withClassPath(this.classPath)
         .andLaunchOptions(this.config.getLaunchOptions())

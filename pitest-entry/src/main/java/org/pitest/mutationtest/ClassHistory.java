@@ -1,9 +1,13 @@
 package org.pitest.mutationtest;
 
+import java.io.Serializable;
+
 import org.pitest.classinfo.ClassName;
 import org.pitest.classinfo.HierarchicalClassId;
 
-public class ClassHistory {
+public class ClassHistory implements Serializable {
+
+  private static final long serialVersionUID = 1L;
 
   private final HierarchicalClassId id;
   private final String              coverageId;

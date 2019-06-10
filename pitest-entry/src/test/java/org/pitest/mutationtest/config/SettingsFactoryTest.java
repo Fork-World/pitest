@@ -4,19 +4,22 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import java.io.File;
 import java.util.Arrays;
 import java.util.Collections;
 
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
+import org.mockito.Mockito;
 import org.pitest.coverage.execute.CoverageOptions;
 import org.pitest.coverage.export.NullCoverageExporter;
-import org.pitest.help.PitHelpError;
+import org.pitest.functional.SideEffect1;
 import org.pitest.mutationtest.engine.gregor.config.GregorEngineFactory;
-import org.pitest.util.Glob;
+import org.pitest.plugin.Feature;
+import org.pitest.testapi.TestGroupConfig;
 import org.pitest.util.PitError;
 
 public class SettingsFactoryTest {
@@ -30,11 +33,7 @@ public class SettingsFactoryTest {
   @Before
   public void setUp() {
     this.testee = new SettingsFactory(this.options, this.plugins);
-  }
-
-  @Test
-  public void shouldReturnTheLegacyTestFrameworkPluginWhenNoOtherOnClasspath() {
-    assertTrue(this.testee.getTestFrameworkPlugin() != null);
+    this.options.setGroupConfig(new TestGroupConfig());
   }
 
   @Test
@@ -90,26 +89,42 @@ public class SettingsFactoryTest {
 
   @Test
   public void shouldNotAllowUserToCalculateCoverageForCoreClasses() {
-    this.options.setTargetClasses(Glob.toGlobPredicates(Collections
-        .singleton("java/Integer")));
+    this.options.setTargetClasses(Collections
+        .singleton("java/Integer"));
     final CoverageOptions actual = this.testee.createCoverageOptions();
-    assertFalse(actual.getFilter().apply("java/Integer"));
+    assertFalse(actual.getFilter().test("java/Integer"));
   }
 
   @Test
-  @Ignore("while hackign")
   public void shouldNotAllowUserToCalculateCoverageForCoverageImplementation() {
-    this.options.setTargetClasses(Glob.toGlobPredicates(Collections
-        .singleton("/org/pitest/coverage")));
+    this.options.setTargetClasses(Collections
+        .singleton("/org/pitest/coverage"));
     final CoverageOptions actual = this.testee.createCoverageOptions();
-    assertFalse(actual.getFilter().apply("org/pitest/coverage"));
+    assertFalse(actual.getFilter().test("org/pitest/coverage"));
   }
 
-  @Test(expected = PitHelpError.class)
-  public void shouldNotAllowUserToMakePITMutateItself() {
-    this.options.setTargetClasses(Glob.toGlobPredicates(Collections
-        .singleton("org.pitest.*")));
-    this.testee.createCoverageOptions();
+  @Test
+  public void shouldDescribeActiveFeatures() {
+    final SideEffect1<Feature> disabled = Mockito.mock(SideEffect1.class);
+    final SideEffect1<Feature> enabled = Mockito.mock(SideEffect1.class);
+
+    this.options.setFeatures(Arrays.asList("+FSTATINIT"));
+
+    this.testee.describeFeatures(enabled, disabled);
+    verify(enabled).apply(Feature.named("FSTATINIT"));
+    verify(disabled, never()).apply(Feature.named("FSTATINIT"));
+  }
+
+  @Test
+  public void shouldDescribeDisabledFeatures() {
+    final SideEffect1<Feature> disabled = Mockito.mock(SideEffect1.class);
+    final SideEffect1<Feature> enabled = Mockito.mock(SideEffect1.class);
+
+    this.options.setFeatures(Arrays.asList("-FSTATINIT"));
+
+    this.testee.describeFeatures(enabled, disabled);
+    verify(enabled, never()).apply(Feature.named("FSTATINIT"));
+    verify(disabled).apply(Feature.named("FSTATINIT"));
   }
 
 }

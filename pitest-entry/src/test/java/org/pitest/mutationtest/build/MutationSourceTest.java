@@ -9,33 +9,34 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Function;
 
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.runners.MockitoJUnitRunner;
 import org.pitest.classinfo.ClassByteArraySource;
 import org.pitest.classinfo.ClassName;
+import org.pitest.classpath.ClassloaderByteArraySource;
 import org.pitest.coverage.TestInfo;
-import org.pitest.functional.F;
 import org.pitest.functional.FCollection;
-import org.pitest.functional.Option;
+import java.util.Optional;
 import org.pitest.mutationtest.MutationConfig;
 import org.pitest.mutationtest.engine.Mutater;
 import org.pitest.mutationtest.engine.MutationDetails;
 import org.pitest.mutationtest.engine.MutationEngine;
 import org.pitest.mutationtest.engine.MutationIdentifier;
-import org.pitest.mutationtest.filter.UnfilteredMutationFilter;
 import org.pitest.process.LaunchOptions;
 
+@RunWith(MockitoJUnitRunner.class)
 public class MutationSourceTest {
 
   private MutationSource       testee;
 
   private MutationConfig       config;
 
-  @Mock
-  private ClassByteArraySource source;
+  private final ClassByteArraySource source = ClassloaderByteArraySource.fromContext();
 
   @Mock
   private Mutater              mutater;
@@ -46,15 +47,14 @@ public class MutationSourceTest {
   @Mock
   private TestPrioritiser      prioritiser;
 
-  private final ClassName      foo = ClassName.fromString("foo");
+  private final ClassName      foo = ClassName.fromClass(Foo.class);
 
   @Before
   public void setUp() {
-    MockitoAnnotations.initMocks(this);
-    when(this.engine.createMutator(this.source)).thenReturn(this.mutater);
+    when(this.engine.createMutator(any(ClassByteArraySource.class))).thenReturn(this.mutater);
     this.config = new MutationConfig(this.engine, new LaunchOptions(null));
-    this.testee = new MutationSource(this.config,
-        UnfilteredMutationFilter.INSTANCE, this.prioritiser, this.source);
+    this.testee = new MutationSource(this.config, this.prioritiser
+        , this.source, CompoundMutationInterceptor.nullInterceptor());
   }
 
   @Test
@@ -77,18 +77,12 @@ public class MutationSourceTest {
   }
 
   private List<TestInfo> makeTestInfos(final Integer... times) {
-    return new ArrayList<TestInfo>(FCollection.map(Arrays.asList(times),
+    return new ArrayList<>(FCollection.map(Arrays.asList(times),
         timeToTestInfo()));
   }
 
-  private F<Integer, TestInfo> timeToTestInfo() {
-    return new F<Integer, TestInfo>() {
-      @Override
-      public TestInfo apply(final Integer a) {
-        return new TestInfo("foo", "bar", a, Option.<ClassName> none(), 0);
-      }
-
-    };
+  private Function<Integer, TestInfo> timeToTestInfo() {
+    return a -> new TestInfo("foo", "bar", a, Optional.<ClassName> empty(), 0);
   }
 
   private List<MutationDetails> makeMutations(final String method) {
@@ -101,5 +95,9 @@ public class MutationSourceTest {
         .withClass(this.foo).withMethod(method).build(), 0, "mutator");
     return new MutationDetails(id, "file", "desc", 1, 2);
   }
+
+}
+
+class Foo {
 
 }

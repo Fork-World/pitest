@@ -2,6 +2,8 @@ package org.pitest.classpath;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
@@ -26,10 +28,13 @@ public class CompoundClassPathRootTest {
   @Mock
   private ClassPathRoot         child2;
 
+  @Mock
+  private IOHeavyRoot           heavyChild;
+
   @Before
   public void setUp() {
     MockitoAnnotations.initMocks(this);
-    this.testee = new CompoundClassPathRoot(Arrays.asList(this.child1,
+    this.testee = new CompoundClassPathRoot(Arrays.asList(this.child1,this.heavyChild,
         this.child2));
   }
 
@@ -38,8 +43,9 @@ public class CompoundClassPathRootTest {
 
     when(this.child1.classNames()).thenReturn(Collections.singletonList("Foo"));
     when(this.child2.classNames()).thenReturn(Collections.singletonList("Bar"));
+    when(this.heavyChild.classNames()).thenReturn(Collections.singletonList("Heavy"));
 
-    assertThat(this.testee.classNames()).containsExactly("Foo", "Bar");
+    assertThat(this.testee.classNames()).containsOnly("Foo", "Bar", "Heavy");
 
   }
 
@@ -69,4 +75,20 @@ public class CompoundClassPathRootTest {
     assertThat(this.testee.getResource("Foo")).isSameAs(url);
   }
 
+  @Test
+  public void shouldNotQueryHeavyRootsForClassesTheyDoNotContain() throws IOException {
+    when(this.child1.classNames()).thenReturn(Collections.singletonList("Foo"));
+    when(this.heavyChild.classNames()).thenReturn(Collections.singletonList("Heavy"));
+    when(this.child2.classNames()).thenReturn(Collections.singletonList("Bar"));
+
+
+    this.testee.getData("Bar");
+    verify(this.heavyChild,never()).getData("Bar");
+
+    this.testee.getData("Heavy");
+    verify(this.heavyChild).getData("Heavy");
+  }
+
 }
+
+

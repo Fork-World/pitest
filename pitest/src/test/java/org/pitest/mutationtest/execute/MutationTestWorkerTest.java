@@ -7,12 +7,11 @@ import static org.pitest.mutationtest.LocationMother.aLocation;
 import static org.pitest.mutationtest.LocationMother.aMutationId;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-
-import junit.framework.AssertionFailedError;
 
 import org.junit.Before;
 import org.junit.Ignore;
@@ -30,6 +29,8 @@ import org.pitest.mutationtest.engine.MutationIdentifier;
 import org.pitest.testapi.Description;
 import org.pitest.testapi.ResultCollector;
 import org.pitest.testapi.TestUnit;
+
+import junit.framework.AssertionFailedError;
 
 public class MutationTestWorkerTest {
 
@@ -54,7 +55,7 @@ public class MutationTestWorkerTest {
   public void setUp() {
     MockitoAnnotations.initMocks(this);
     this.testee = new MutationTestWorker(this.hotswapper, this.mutater,
-        this.loader);
+        this.loader, false);
   }
 
   @Test
@@ -76,10 +77,9 @@ public class MutationTestWorkerTest {
     final Collection<MutationDetails> range = Arrays.asList(mutantOne);
     this.testee.run(range, this.reporter, this.testSource);
     verify(this.reporter).report(mutantOne.getId(),
-        new MutationStatusTestPair(0, DetectionStatus.NO_COVERAGE));
+        MutationStatusTestPair.notAnalysed(0, DetectionStatus.NO_COVERAGE));
   }
 
-  @SuppressWarnings("unchecked")
   @Test
   public void shouldReportWhenMutationNotDetected() throws IOException {
     final MutationDetails mutantOne = makeMutant("foo", 1);
@@ -92,11 +92,10 @@ public class MutationTestWorkerTest {
             any(byte[].class))).thenReturn(true);
     this.testee.run(range, this.reporter, this.testSource);
     verify(this.reporter).report(mutantOne.getId(),
-        new MutationStatusTestPair(1, DetectionStatus.SURVIVED));
+        new MutationStatusTestPair(1, DetectionStatus.SURVIVED, new ArrayList<>(),  new ArrayList<>()));
 
   }
 
-  @SuppressWarnings("unchecked")
   @Test
   public void shouldReportWhenMutationNotViable() throws IOException {
     final MutationDetails mutantOne = makeMutant("foo", 1);
@@ -109,10 +108,9 @@ public class MutationTestWorkerTest {
             any(byte[].class))).thenReturn(false);
     this.testee.run(range, this.reporter, this.testSource);
     verify(this.reporter).report(mutantOne.getId(),
-        new MutationStatusTestPair(0, DetectionStatus.NON_VIABLE));
+        MutationStatusTestPair.notAnalysed(0, DetectionStatus.NON_VIABLE));
   }
 
-  @SuppressWarnings("unchecked")
   @Test
   public void shouldReportWhenMutationKilledByTest() throws IOException {
     final MutationDetails mutantOne = makeMutant("foo", 1);
@@ -134,7 +132,7 @@ public class MutationTestWorkerTest {
     return new TestUnit() {
 
       @Override
-      public void execute(final ClassLoader loader, final ResultCollector rc) {
+      public void execute(final ResultCollector rc) {
         rc.notifyStart(getDescription());
         rc.notifyEnd(getDescription(), new AssertionFailedError());
       }
@@ -151,7 +149,7 @@ public class MutationTestWorkerTest {
     return new TestUnit() {
 
       @Override
-      public void execute(final ClassLoader loader, final ResultCollector rc) {
+      public void execute(final ResultCollector rc) {
         rc.notifyStart(getDescription());
         rc.notifyEnd(getDescription());
       }
@@ -165,7 +163,7 @@ public class MutationTestWorkerTest {
   }
 
   public MutationDetails makeMutant(final String clazz, final int index) {
-    MutationIdentifier id = aMutationId()
+    final MutationIdentifier id = aMutationId()
         .withLocation(aLocation().withClass(ClassName.fromString(clazz)))
         .withIndex(index).withMutator("mutator").build();
     final MutationDetails md = new MutationDetails(id, "sourceFile", "desc",

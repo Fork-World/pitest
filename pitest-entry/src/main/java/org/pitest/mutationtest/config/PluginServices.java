@@ -7,8 +7,8 @@ import java.util.List;
 import org.pitest.mutationtest.MutationEngineFactory;
 import org.pitest.mutationtest.MutationResultListenerFactory;
 import org.pitest.mutationtest.build.MutationGrouperFactory;
+import org.pitest.mutationtest.build.MutationInterceptorFactory;
 import org.pitest.mutationtest.build.TestPrioritiserFactory;
-import org.pitest.mutationtest.filter.MutationFilterFactory;
 import org.pitest.plugin.ClientClasspathPlugin;
 import org.pitest.plugin.ToolClasspathPlugin;
 import org.pitest.testapi.TestPluginFactory;
@@ -34,11 +34,11 @@ public class PluginServices {
    * @return list of plugins
    */
   public Iterable<? extends ToolClasspathPlugin> findToolClasspathPlugins() {
-    final List<ToolClasspathPlugin> l = new ArrayList<ToolClasspathPlugin>();
+    final List<ToolClasspathPlugin> l = new ArrayList<>();
     l.addAll(findListeners());
     l.addAll(findGroupers());
-    l.addAll(findFilters());
     l.addAll(findTestPrioritisers());
+    l.addAll(findInterceptors());
     return l;
   }
 
@@ -47,23 +47,18 @@ public class PluginServices {
    * under test at runtime
    */
   public Iterable<? extends ClientClasspathPlugin> findClientClasspathPlugins() {
-    final List<ClientClasspathPlugin> l = new ArrayList<ClientClasspathPlugin>();
+    final List<ClientClasspathPlugin> l = new ArrayList<>();
     l.addAll(findMutationEngines());
     l.addAll(findTestFrameworkPlugins());
     l.addAll(nullPlugins());
     return l;
   }
-
   Collection<? extends TestPluginFactory> findTestFrameworkPlugins() {
     return ServiceLoader.load(TestPluginFactory.class, this.loader);
   }
 
   Collection<? extends MutationGrouperFactory> findGroupers() {
     return ServiceLoader.load(MutationGrouperFactory.class, this.loader);
-  }
-
-  Collection<? extends MutationFilterFactory> findFilters() {
-    return ServiceLoader.load(MutationFilterFactory.class, this.loader);
   }
 
   Collection<? extends MutationResultListenerFactory> findListeners() {
@@ -80,6 +75,10 @@ public class PluginServices {
 
   private Collection<ClientClasspathPlugin> nullPlugins() {
     return ServiceLoader.load(ClientClasspathPlugin.class, this.loader);
+  }
+
+  public Collection<? extends MutationInterceptorFactory> findInterceptors() {
+    return ServiceLoader.load(MutationInterceptorFactory.class, this.loader);
   }
 
 }

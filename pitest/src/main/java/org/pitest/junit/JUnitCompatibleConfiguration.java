@@ -18,31 +18,35 @@ import java.util.Arrays;
 import java.util.Collection;
 
 import org.pitest.extension.common.CompoundTestSuiteFinder;
-import org.pitest.functional.Option;
+import java.util.Optional;
 import org.pitest.help.Help;
 import org.pitest.help.PitHelpError;
 import org.pitest.testapi.Configuration;
-import org.pitest.testapi.TestClassIdentifier;
 import org.pitest.testapi.TestGroupConfig;
 import org.pitest.testapi.TestSuiteFinder;
 import org.pitest.testapi.TestUnitFinder;
+import org.pitest.util.Preconditions;
 
 public class JUnitCompatibleConfiguration implements Configuration {
 
   private final TestGroupConfig config;
   private final Collection<String> excludedRunners;
+  private final Collection<String> includedTestMethods;
 
   private static final JUnitVersion MIN_JUNIT_VERSION = JUnitVersion.parse("4.6");
-  
-  public JUnitCompatibleConfiguration(TestGroupConfig config, Collection<String> excludedRunners) {
+
+  public JUnitCompatibleConfiguration(TestGroupConfig config, Collection<String> excludedRunners,
+                                      Collection<String> includedTestMethods) {
+    Preconditions.checkNotNull(config);
     this.config = config;
     this.excludedRunners = excludedRunners;
+    this.includedTestMethods = includedTestMethods;
   }
 
   @Override
   public TestUnitFinder testUnitFinder() {
     return new CompoundTestUnitFinder(Arrays.asList(
-        new JUnitCustomRunnerTestUnitFinder(),
+        new JUnitCustomRunnerTestUnitFinder(this.config, this.excludedRunners, this.includedTestMethods),
         new ParameterisedJUnitTestFinder()));
   }
 
@@ -52,23 +56,19 @@ public class JUnitCompatibleConfiguration implements Configuration {
         new JUnit4SuiteFinder(), new RunnerSuiteFinder()));
   }
 
-  @Override
-  public TestClassIdentifier testClassIdentifier() {
-    return new JUnitTestClassIdentifier(this.config, this.excludedRunners);
-  }
 
   @Override
-  public Option<PitHelpError> verifyEnvironment() {
+  public Optional<PitHelpError> verifyEnvironment() {
     try {
       final String version = junit.runner.Version.id();
       if (isInvalidVersion(version)) {
-        return Option.some(new PitHelpError(Help.WRONG_JUNIT_VERSION, version));
+        return Optional.ofNullable(new PitHelpError(Help.WRONG_JUNIT_VERSION, version));
       }
     } catch (final NoClassDefFoundError er) {
-      return Option.some(new PitHelpError(Help.NO_JUNIT));
+      return Optional.ofNullable(new PitHelpError(Help.NO_JUNIT));
     }
 
-    return Option.none();
+    return Optional.empty();
   }
 
   boolean isInvalidVersion(final String version) {
